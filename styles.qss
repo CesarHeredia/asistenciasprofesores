@@ -1,0 +1,133 @@
+/* Estilos globales */
+QWidget {
+    background-color: #F0F5FF;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    color: #333333;
+    font-size: 10pt;
+}
+
+/* Header principal (QMainWindow background) */
+QMainWindow {
+    background-color: #F0F5FF;
+}
+
+/* Encabezado blanco superior */
+#HeaderFrame {
+    background-color: #FFFFFF;
+    border-bottom: 3px solid #1C54FF;
+}
+
+#AppTitle {
+    color: #1C54FF;
+    font-size: 18pt;
+    font-weight: bold;
+    background: transparent;
+}
+
+#AppDate {
+    color: #888888;
+    background: transparent;
+    font-size: 10pt;
+}
+
+/* Botones principales */
+QPushButton {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 8px 16px;
+    color: #333333;
+    font-weight: 500;
+}
+
+QPushButton:hover {
+    background-color: #F8FAFC;
+    border: 1px solid #CBD5E1;
+}
+
+QPushButton#PrimaryButton {
+    background-color: #1C54FF;
+    color: white;
+    border: none;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #0E3FD8;
+}
+
+/* Pestañas (Tabs) */
+QTabWidget::pane {
+    border: none;
+    background: transparent;
+}
+
+QTabBar::tab {
+    background-color: transparent;
+    color: #555555;
+    padding: 8px 24px;
+    margin-right: 4px;
+    border-radius: 16px; /* Para hacerlos píldoras */
+    font-weight: 600;
+}
+
+QTabBar::tab:selected {
+    background-color: #1C54FF;
+    color: white;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #E2E8F0;
+}
+
+/* Tarjetas (Cards) blancas */
+QFrame#CardFrame {
+    background-color: #FFFFFF;
+    border-radius: 12px;
+    border: 1px solid #E2E8F0;
+}
+
+QLabel#CardTitle {
+    font-size: 11pt;
+    font-weight: bold;
+    background: transparent;
+}
+
+QLabel#CardValue {
+    font-size: 24pt;
+    font-weight: bold;
+    color: #1C54FF;
+    background: transparent;
+}
+
+QLabel#CardSubtitle {
+    font-size: 9pt;
+    color: #3b82f6;
+    background: transparent;
+}
+
+/* Tablas */
+QTableWidget {
+    background-color: #FFFFFF;
+    alternate-background-color: #F8FAFC;
+    border: none;
+    gridline-color: #E2E8F0;
+    selection-background-color: #EBF4FF;
+    selection-color: #333333;
+}
+
+QHeaderView::section {
+    background-color: #FFFFFF;
+    padding: 8px;
+    border: none;
+    border-bottom: 2px solid #E2E8F0;
+    font-weight: bold;
+    color: #333333;
+}
+
+/* Entradas de búsqueda */
+QLineEdit#SearchInput {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 8px;
+}

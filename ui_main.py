@@ -1,17 +1,16 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QPushButton, QComboBox, QTabWidget, 
-                             QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit)
-from PyQt6.QtCore import Qt
-from datetime import datetime
+                             QLabel, QPushButton, QComboBox, QFrame, 
+                             QScrollArea, QGridLayout, QLineEdit, QCheckBox, QSpacerItem, QSizePolicy)
+from PyQt6.QtCore import Qt, QSize
 import os
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sistema de Gestión de Asistencias USM")
-        self.resize(1200, 800)
+        self.setWindowTitle("Sistema de Asistencia - Panel de Control")
+        # El diseño se ve bastante panorámico, ajustamos el tamaño
+        self.resize(1300, 800)
         
-        # Cargar estilos
         self.load_styles()
         self.setup_ui()
 
@@ -25,159 +24,236 @@ class MainWindow(QMainWindow):
 
     def setup_ui(self):
         central_widget = QWidget()
+        central_widget.setObjectName("CentralWidget")
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        
+        # Layout Principal Horizontal (3 Columnas)
+        main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # --- 1. Header ---
-        header_frame = QFrame()
-        header_frame.setObjectName("HeaderFrame")
-        header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(40, 20, 40, 20)
+        # 1. Columna Izquierda (Sidebar)
+        left_sidebar = self.create_left_sidebar()
+        main_layout.addWidget(left_sidebar)
 
-        # Header Izquierda
-        left_header_layout = QVBoxLayout()
-        title_label = QLabel("Sistema de Gestión de Asistencias USM")
-        title_label.setObjectName("AppTitle")
-        
-        # Fecha en español
-        dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-        now = datetime.now()
-        date_str = f"{dias[now.weekday()]}, {now.day} de {meses[now.month-1]} {now.year}"
-        
-        date_label = QLabel(date_str)
-        date_label.setObjectName("AppDate")
-        left_header_layout.addWidget(title_label)
-        left_header_layout.addWidget(date_label)
+        # 2. Columna Central (Tarjetas)
+        center_panel = self.create_center_panel()
+        main_layout.addWidget(center_panel, stretch=1) # El centro toma el mayor espacio disponible
 
-        # Header Derecha
-        right_header_layout = QHBoxLayout()
-        date_combo = QComboBox()
-        date_combo.addItems(["Hoy", "Ayer", "Esta semana"])
-        
-        export_btn = QPushButton("Exportar")
-        
-        right_header_layout.addWidget(date_combo)
-        right_header_layout.addWidget(export_btn)
-        right_header_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        # 3. Columna Derecha (Filtros)
+        right_sidebar = self.create_right_sidebar()
+        main_layout.addWidget(right_sidebar)
 
-        header_layout.addLayout(left_header_layout)
-        header_layout.addLayout(right_header_layout)
-        main_layout.addWidget(header_frame)
+    def create_left_sidebar(self):
+        sidebar = QFrame()
+        sidebar.setObjectName("LeftSidebar")
+        sidebar.setFixedWidth(240)
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(0, 30, 0, 0)
+        layout.setSpacing(0)
 
-        # --- 2. Contenedor Principal (Cuerpo) ---
-        body_widget = QWidget()
-        body_layout = QVBoxLayout(body_widget)
-        body_layout.setContentsMargins(40, 30, 40, 30)
-        
-        # Pestañas
-        self.tabs = QTabWidget()
-        self.tab_asistencias = QWidget()
-        self.tab_empleados = QWidget()
-        
-        self.tabs.addTab(self.tab_asistencias, "Asistencias")
-        self.tabs.addTab(self.tab_empleados, "Gestión de Empleados")
-        
-        self.setup_asistencias_tab()
-        self.setup_empleados_tab()
-        
-        body_layout.addWidget(self.tabs)
-        main_layout.addWidget(body_widget)
+        # Logo "G"
+        logo_container = QWidget()
+        logo_layout = QHBoxLayout(logo_container)
+        logo_label = QLabel("G")
+        logo_label.setObjectName("LogoLabel")
+        logo_layout.addWidget(logo_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(logo_container)
+        layout.addSpacing(30)
 
-    def create_summary_card(self, title, value, subtitle):
+        # Botones del menú
+        btn_profesores = QPushButton("👥  Gestionar\n      profesores")
+        btn_profesores.setObjectName("MenuButtonActive")
+        btn_profesores.setFixedHeight(70)
+        
+        btn_horarios = QPushButton("📅  Gestionar\n      horarios")
+        btn_horarios.setObjectName("MenuButton")
+        btn_horarios.setFixedHeight(70)
+
+        # Usaremos una 'M' literal para simular el tercer icono si es necesario
+        btn_materias = QPushButton("M   Gestionar\n      Materias")
+        btn_materias.setObjectName("MenuButton")
+        btn_materias.setFixedHeight(70)
+
+        layout.addWidget(btn_profesores)
+        layout.addWidget(btn_horarios)
+        layout.addWidget(btn_materias)
+        
+        layout.addStretch() # Empuja todo hacia arriba
+        return sidebar
+
+    def create_center_panel(self):
+        panel = QFrame()
+        panel.setObjectName("CenterPanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(40, 40, 40, 30)
+        layout.setSpacing(30)
+
+        # Título
+        title = QLabel("SISTEMA DE ASISTENCIA - PANEL DE CONTROL")
+        title.setObjectName("MainTitle")
+        layout.addWidget(title)
+
+        # Área de Scroll para las tarjetas
+        scroll_area = QScrollArea()
+        scroll_area.setObjectName("ScrollArea")
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        scroll_content = QWidget()
+        scroll_content.setObjectName("ScrollContent")
+        grid_layout = QGridLayout(scroll_content)
+        grid_layout.setSpacing(25)
+        grid_layout.setContentsMargins(10, 10, 10, 10)
+
+        # Agregar 4 tarjetas de ejemplo basadas en la imagen
+        tarjetas_datos = [
+            ("Dr. Carlos Rodríguez", "Algoritmos Avanzados", "101-B", "Ingeniería", "🧔🏽"),
+            ("Dra. Ana Pérez", "Introducción a la Física", "205", "Ciencias Exactas", "👩🏻"),
+            ("Lic. Sofía Martínez", "Historia del Arte", "310", "Humanidades", "👩🏽"),
+            ("Ing. David Chen", "Programación de Sistemas", "G-01", "Ingeniería", "👨🏻")
+        ]
+
+        row, col = 0, 0
+        for data in tarjetas_datos:
+            card = self.create_profesor_card(*data)
+            grid_layout.addWidget(card, row, col)
+            col += 1
+            if col > 1: # 2 columnas
+                col = 0
+                row += 1
+
+        # Empujar las tarjetas hacia arriba si hay espacio vacío
+        grid_layout.setRowStretch(row + 1, 1)
+
+        scroll_area.setWidget(scroll_content)
+        layout.addWidget(scroll_area)
+
+        # Botón "Ver más"
+        ver_mas_btn = QPushButton("⬇️\nVer más profesores...")
+        ver_mas_btn.setObjectName("VerMasBtn")
+        ver_mas_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addWidget(ver_mas_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        return panel
+
+    def create_profesor_card(self, nombre, materia, aula, facultad, avatar_emoji):
         card = QFrame()
-        card.setObjectName("CardFrame")
+        card.setObjectName("ProfesorCard")
+        # Aplicamos una política de tamaño para que se ajusten bien
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        card.setMinimumHeight(200)
+        
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+
+        # Header de la tarjeta (Avatar + Nombre)
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(15)
         
-        title_lbl = QLabel(title)
-        title_lbl.setObjectName("CardTitle")
+        avatar_lbl = QLabel(avatar_emoji)
+        avatar_lbl.setObjectName("Avatar")
+        avatar_lbl.setFixedSize(60, 60)
+        avatar_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        name_container = QWidget()
+        name_layout = QVBoxLayout(name_container)
+        name_layout.setContentsMargins(0, 0, 0, 0)
+        name_layout.setSpacing(2)
         
-        value_lbl = QLabel(str(value))
-        value_lbl.setObjectName("CardValue")
+        lbl_profesor_title = QLabel("Profesor Name:")
+        lbl_profesor_title.setObjectName("CardLabelSmall")
+        lbl_nombre = QLabel(nombre)
+        lbl_nombre.setObjectName("CardName")
         
-        sub_lbl = QLabel(subtitle)
-        sub_lbl.setObjectName("CardSubtitle")
-        
-        layout.addWidget(title_lbl)
-        layout.addWidget(value_lbl)
-        layout.addWidget(sub_lbl)
+        name_layout.addWidget(lbl_profesor_title)
+        name_layout.addWidget(lbl_nombre)
+        name_layout.addStretch()
+
+        header_layout.addWidget(avatar_lbl)
+        header_layout.addWidget(name_container)
+        header_layout.addStretch()
+
+        layout.addLayout(header_layout)
+
+        # Detalles
+        def add_detail_row(label_text, value_text):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setObjectName("CardLabelBold")
+            val = QLabel(value_text)
+            val.setObjectName("CardValueNormal")
+            row.addWidget(lbl)
+            row.addWidget(val)
+            row.addStretch()
+            layout.addLayout(row)
+
+        add_detail_row("Materia:", materia)
+        add_detail_row("Aula:", aula)
+        add_detail_row("Facultad:", facultad)
+
         return card
 
-    def setup_asistencias_tab(self):
-        layout = QVBoxLayout(self.tab_asistencias)
-        layout.setContentsMargins(0, 20, 0, 0)
-        layout.setSpacing(24)
+    def create_right_sidebar(self):
+        sidebar = QFrame()
+        sidebar.setObjectName("RightSidebar")
+        sidebar.setFixedWidth(280)
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(25, 40, 25, 40)
+        layout.setSpacing(20)
 
-        # Tarjetas Superiores
-        cards_layout = QHBoxLayout()
-        cards_layout.addWidget(self.create_summary_card("Total Empleados", "0", "Empleados registrados"))
-        cards_layout.addWidget(self.create_summary_card("Presentes Hoy", "0", "0% de asistencia"))
-        cards_layout.addWidget(self.create_summary_card("Ausentes", "0", "0% del total"))
-        cards_layout.addWidget(self.create_summary_card("Tardanzas", "0", "0% del total"))
-        layout.addLayout(cards_layout)
-
-        # Tarjeta de la Tabla Principal
-        table_card = QFrame()
-        table_card.setObjectName("CardFrame")
-        table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(30, 30, 30, 30)
-        
-        title = QLabel("Registro de Asistencias - Hoy")
-        title.setObjectName("CardTitle")
-        title.setStyleSheet("font-size: 14pt; color: #1C54FF;")
-        
+        # Búsqueda
         search_input = QLineEdit()
         search_input.setObjectName("SearchInput")
-        search_input.setPlaceholderText("Buscar por nombre o departamento...")
-        
-        table = QTableWidget(0, 5)
-        table.setHorizontalHeaderLabels(["Empleado", "Departamento", "Entrada", "Salida", "Estado"])
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        
-        table_layout.addWidget(title)
-        table_layout.addSpacing(15)
-        table_layout.addWidget(search_input)
-        table_layout.addWidget(table)
-        
-        layout.addWidget(table_card)
+        search_input.setPlaceholderText("BUSCAR")
+        layout.addWidget(search_input)
 
-    def setup_empleados_tab(self):
-        layout = QVBoxLayout(self.tab_empleados)
-        layout.setContentsMargins(0, 20, 0, 0)
+        layout.addSpacing(10)
 
-        # Tarjeta de la Tabla Principal
-        table_card = QFrame()
-        table_card.setObjectName("CardFrame")
-        table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(30, 30, 30, 30)
+        # Filtros
+        lbl_filtrar = QLabel("FILTRAR POR:")
+        lbl_filtrar.setObjectName("FilterTitle")
+        layout.addWidget(lbl_filtrar)
+
+        def add_combo_filter(title):
+            lbl = QLabel(title)
+            lbl.setObjectName("FilterLabel")
+            combo = QComboBox()
+            combo.setObjectName("FilterCombo")
+            combo.addItem(title)
+            layout.addWidget(lbl)
+            layout.addWidget(combo)
+
+        add_combo_filter("Materia")
+        add_combo_filter("Facultad")
+        add_combo_filter("Edificio")
+
+        layout.addSpacing(10)
+
+        # Checkboxes
+        for i in range(1, 5):
+            cb = QCheckBox(f"Departamento {i}")
+            cb.setObjectName("FilterCheck")
+            layout.addWidget(cb)
+
+        layout.addSpacing(15)
+
+        # Estado Asistencia
+        lbl_estado = QLabel("Estado de Asistencia:")
+        lbl_estado.setObjectName("FilterTitle")
+        layout.addWidget(lbl_estado)
+
+        combo_estado1 = QComboBox()
+        combo_estado1.setObjectName("FilterCombo")
+        combo_estado1.addItem("Asistencia")
         
-        top_layout = QHBoxLayout()
-        title = QLabel("Gestión de Empleados")
-        title.setObjectName("CardTitle")
-        title.setStyleSheet("font-size: 14pt; color: #1C54FF;")
-        
-        add_btn = QPushButton("+ Agregar Empleado")
-        add_btn.setObjectName("PrimaryButton")
-        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        top_layout.addWidget(title)
-        top_layout.addStretch()
-        top_layout.addWidget(add_btn)
-        
-        search_input = QLineEdit()
-        search_input.setObjectName("SearchInput")
-        search_input.setPlaceholderText("Buscar por nombre o departamento...")
-        
-        table = QTableWidget(0, 5)
-        table.setHorizontalHeaderLabels(["Nombre", "Departamento", "Teléfono", "Estado", "Acciones"])
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        
-        table_layout.addLayout(top_layout)
-        table_layout.addSpacing(15)
-        table_layout.addWidget(search_input)
-        table_layout.addWidget(table)
-        
-        layout.addWidget(table_card)
+        combo_estado2 = QComboBox()
+        combo_estado2.setObjectName("FilterCombo")
+        combo_estado2.addItem("Asistencia")
+
+        layout.addWidget(combo_estado1)
+        layout.addWidget(combo_estado2)
+
+        layout.addStretch()
+        return sidebar

@@ -1,133 +1,167 @@
 /* Estilos globales */
 QWidget {
-    background-color: #F0F5FF;
     font-family: "Segoe UI", "Inter", sans-serif;
-    color: #333333;
+    color: #1F2937;
     font-size: 10pt;
 }
 
-/* Header principal (QMainWindow background) */
-QMainWindow {
-    background-color: #F0F5FF;
+/* Central Widget Layout */
+#CentralWidget {
+    background-color: #F8FAFC; /* Color de fondo general claro */
 }
 
-/* Encabezado blanco superior */
-#HeaderFrame {
+/* =========================================
+   1. BARRA LATERAL IZQUIERDA
+========================================= */
+#LeftSidebar {
     background-color: #FFFFFF;
-    border-bottom: 3px solid #1C54FF;
+    border-right: 1px solid #E5E7EB;
 }
 
-#AppTitle {
-    color: #1C54FF;
-    font-size: 18pt;
-    font-weight: bold;
-    background: transparent;
+#LogoLabel {
+    color: #1E3A8A;
+    font-size: 28pt;
+    font-weight: 900;
 }
 
-#AppDate {
-    color: #888888;
-    background: transparent;
-    font-size: 10pt;
-}
-
-/* Botones principales */
-QPushButton {
-    background-color: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 6px;
-    padding: 8px 16px;
-    color: #333333;
-    font-weight: 500;
-}
-
-QPushButton:hover {
-    background-color: #F8FAFC;
-    border: 1px solid #CBD5E1;
-}
-
-QPushButton#PrimaryButton {
-    background-color: #1C54FF;
-    color: white;
-    border: none;
-}
-
-QPushButton#PrimaryButton:hover {
-    background-color: #0E3FD8;
-}
-
-/* Pestañas (Tabs) */
-QTabWidget::pane {
-    border: none;
-    background: transparent;
-}
-
-QTabBar::tab {
+/* Botones del menú lateral */
+QPushButton#MenuButton, QPushButton#MenuButtonActive {
     background-color: transparent;
-    color: #555555;
-    padding: 8px 24px;
-    margin-right: 4px;
-    border-radius: 16px; /* Para hacerlos píldoras */
+    border: none;
+    text-align: left;
+    padding-left: 20px;
+    font-size: 11pt;
+    font-weight: 500;
+    color: #374151;
+}
+
+QPushButton#MenuButton:hover {
+    background-color: #F3F4F6;
+}
+
+QPushButton#MenuButtonActive {
+    background-color: #E0E7FF;
+    border-left: 4px solid #1E3A8A; /* Línea azul indicando selección */
+    color: #111827;
+}
+
+/* =========================================
+   2. ÁREA CENTRAL (Tarjetas)
+========================================= */
+#CenterPanel {
+    background-color: #F0F4F8; /* Un gris-azulado muy claro de fondo */
+}
+
+#MainTitle {
+    color: #111827;
+    font-size: 16pt;
+    font-weight: 800;
+    margin-bottom: 10px;
+}
+
+#ScrollArea {
+    background: transparent;
+}
+#ScrollContent {
+    background: transparent;
+}
+
+/* Estructura de la tarjeta */
+#ProfesorCard {
+    background-color: #FFFFFF;
+    border-radius: 16px;
+    border: 1px solid #D1D5DB;
+}
+
+/* Avatar dentro de la tarjeta */
+#Avatar {
+    background-color: #DBEAFE; /* Fondo azul clarito */
+    border-radius: 10px;
+    font-size: 28pt;
+}
+
+#CardLabelSmall {
+    color: #6B7280;
+    font-size: 9pt;
+}
+
+#CardName {
+    color: #111827;
+    font-size: 11pt;
     font-weight: 600;
 }
 
-QTabBar::tab:selected {
-    background-color: #1C54FF;
-    color: white;
+#CardLabelBold {
+    color: #111827;
+    font-size: 10pt;
+    font-weight: 700;
 }
 
-QTabBar::tab:hover:!selected {
-    background-color: #E2E8F0;
+#CardValueNormal {
+    color: #374151;
+    font-size: 10pt;
 }
 
-/* Tarjetas (Cards) blancas */
-QFrame#CardFrame {
+/* Botón "Ver más profesores" */
+#VerMasBtn {
+    background-color: transparent;
+    border: none;
+    color: #4B5563;
+    font-size: 10pt;
+    font-weight: 500;
+}
+#VerMasBtn:hover {
+    color: #111827;
+}
+
+/* =========================================
+   3. BARRA LATERAL DERECHA (Filtros)
+========================================= */
+#RightSidebar {
     background-color: #FFFFFF;
-    border-radius: 12px;
-    border: 1px solid #E2E8F0;
+    border-left: 1px solid #E5E7EB;
 }
 
-QLabel#CardTitle {
-    font-size: 11pt;
-    font-weight: bold;
-    background: transparent;
+#SearchInput {
+    background-color: #F3F4F6;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 10pt;
+    color: #374151;
 }
 
-QLabel#CardValue {
-    font-size: 24pt;
-    font-weight: bold;
-    color: #1C54FF;
-    background: transparent;
+#SearchInput:focus {
+    border: 1px solid #3B82F6;
 }
 
-QLabel#CardSubtitle {
+#FilterTitle {
+    color: #111827;
     font-size: 9pt;
-    color: #3b82f6;
-    background: transparent;
+    font-weight: 800;
+    margin-top: 10px;
 }
 
-/* Tablas */
-QTableWidget {
-    background-color: #FFFFFF;
-    alternate-background-color: #F8FAFC;
+#FilterLabel {
+    color: #111827;
+    font-size: 9pt;
+    font-weight: 700;
+    margin-top: 5px;
+}
+
+#FilterCombo {
+    background-color: #F9FAFB;
+    border: 1px solid #D1D5DB;
+    border-radius: 4px;
+    padding: 6px;
+    color: #374151;
+}
+
+#FilterCombo::drop-down {
     border: none;
-    gridline-color: #E2E8F0;
-    selection-background-color: #EBF4FF;
-    selection-color: #333333;
 }
 
-QHeaderView::section {
-    background-color: #FFFFFF;
-    padding: 8px;
-    border: none;
-    border-bottom: 2px solid #E2E8F0;
-    font-weight: bold;
-    color: #333333;
-}
-
-/* Entradas de búsqueda */
-QLineEdit#SearchInput {
-    background-color: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    border-radius: 8px;
-    padding: 8px;
+#FilterCheck {
+    color: #374151;
+    font-size: 9.5pt;
 }

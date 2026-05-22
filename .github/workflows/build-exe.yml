@@ -1,0 +1,39 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Permite ejecutar el flujo de trabajo manualmente desde la interfaz de GitHub
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout del código
+      uses: actions/checkout@v4
+
+    - name: Configurar Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' # Versión estable recomendada
+
+    - name: Instalar Dependencias
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Construir Ejecutable con PyInstaller
+      run: |
+        pyinstaller --noconsole --onefile --add-data "styles.qss;." main.py
+        
+    - name: Renombrar Ejecutable
+      run: |
+        Rename-Item -Path "dist\main.exe" -NewName "SistemaAsistencias.exe"
+
+    - name: Subir el .exe como Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Sistema-Asistencias-Windows-Exe
+        path: dist/SistemaAsistencias.exe
+        retention-days: 90

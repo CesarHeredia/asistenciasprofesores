@@ -62,42 +62,45 @@ def delete_schedule_slot(id_horario):
     return backend.delete_schedule_slot(DB_PATH, id_horario)
 
 @eel.expose
+def update_qr_content(id_profesor, qr_content):
+    """Actualiza el contenido QR de un docente específico en la base de datos."""
+    return backend.update_qr_content(DB_PATH, id_profesor, qr_content)
+
+@eel.expose
 def get_stats_count():
     """Devuelve las estadísticas reales de la base de datos (profesores, materias, horas y asistencias)."""
     return backend.get_stats_count(DB_PATH)
 
 if __name__ == '__main__':
-    print("Iniciando aplicación de asistencia académica...")
-    
-    import sys
-    import threading
     import socket
-    
-    # Encontrar un puerto libre automáticamente para evitar el error "Address already in use"
-    def get_free_port():
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('localhost', 0))
-            return s.getsockname()[1]
-            
-    free_port = get_free_port()
+    import threading
+    import webview
 
-    try:
-        import webview
-    except ImportError:
-        print("Instalando pywebview...")
-        import os
-        os.system(f"{sys.executable} -m pip install pywebview")
-        import webview
+    print("Buscando puerto libre...")
+    # 1. Encontrar un puerto libre usando socket para evitar conflictos
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('localhost', 0))
+    port = s.getsockname()[1]
+    s.close()
 
-    def start_eel():
-        # Usamos el puerto libre encontrado
-        eel.start('index.html', mode=None, port=free_port)
+    print(f"Puerto libre encontrado: {port}")
 
-    # Iniciamos Eel en un hilo de fondo
-    t = threading.Thread(target=start_eel)
-    t.daemon = True
-    t.start()
+    # 2. Iniciar Eel de fondo desactivando su apertura de navegador integrada (mode=None)
+    def run_eel():
+        print(f"Iniciando servidor de Eel en el puerto {port}...")
+        eel.start('index.html', mode=None, port=port)
 
-    # Abrimos una ventana nativa de escritorio que carga la URL local con el puerto dinámico
-    webview.create_window("Sistema de Asistencia", f"http://localhost:{free_port}/index.html", width=1300, height=800)
-    webview.start()
+    # 3. Lanzar Eel en un hilo daemon
+    eel_thread = threading.Thread(target=run_eel, daemon=True)
+    eel_thread.start()
+
+    # 4. Crear e iniciar la ventana nativa de escritorio limpia usando pywebview
+    print(f"Abriendo ventana nativa de PyWebView para la aplicación...")
+    webview.create_window(
+        "Gestión de Asistencia Académica",
+        url=f"http://localhost:{port}/index.html",
+        width=1300,
+        height=800,
+        resizable=True
+    )
+    webview.start(gui='qt')

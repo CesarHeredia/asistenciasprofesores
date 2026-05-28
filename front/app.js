@@ -612,13 +612,35 @@ async function loadCrudTable(tableName) {
       response.columns.forEach(col => {
         const td = document.createElement('td');
         if (col === 'qr_content') {
-          // Mostrar el contenido QR como badge visual
+          // Celda de QR clicable con menú de acción
           const val = row[col];
-          if (val && val.trim() !== '') {
-            td.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;">&#x2705; Asignado</span><br><small style="color:#64748b;font-size:11px;word-break:break-all;">${val.length > 30 ? val.slice(0, 30) + '...' : val}</small>`;
-          } else {
-            td.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;color:#94a3b8;border:1px solid #e2e8f0;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;">&#x2B1C; Sin QR</span>`;
-          }
+          const idCol = tableName === 'profesor' ? 'id_profesor' : 'id_materia';
+          const rowId = row[idCol];
+          const profName = tableName === 'profesor' ? `${row['nb_profesor']} ${row['ap_profesor']}`.trim() : '';
+          const tieneQr = val && val.trim() !== '';
+          const accionLabel = tieneQr ? '🔄 Reemplazar QR' : '➕ Agregar QR';
+
+          td.className = 'qr-cell-td';
+          td.innerHTML = tieneQr
+            ? `<div class="qr-badge assigned" title="${val}">
+                <span class="qr-badge-icon">&#x2705;</span>
+                <span class="qr-badge-text">Asignado</span>
+               </div>
+               <small class="qr-value-preview">${val.length > 35 ? val.slice(0, 35) + '…' : val}</small>`
+            : `<div class="qr-badge empty">
+                <span class="qr-badge-icon">📷</span>
+                <span class="qr-badge-text">Sin QR</span>
+               </div>`;
+
+          // Botón de acción superpuesto al hacer hover (añadido como elemento separado)
+          const qrBtn = document.createElement('button');
+          qrBtn.className = 'qr-action-trigger';
+          qrBtn.textContent = accionLabel;
+          qrBtn.onclick = (e) => {
+            e.stopPropagation();
+            openQrScannerModal(rowId, profName, tieneQr);
+          };
+          td.appendChild(qrBtn);
         } else {
           td.textContent = row[col] !== null ? row[col] : '-';
         }
@@ -1025,4 +1047,243 @@ async function handleScheduleSubmit(e) {
     console.error(err);
     alert("Error de comunicación con el backend.");
   }
+}
+
+// ==========================================================================
+// 9. Módulo de Escáner de Código QR con Cámara
+// ==========================================================================
+let qrStream = null;
+let qrAnimFrame = null;
+let qrCurrentProfesorId = null;
+let qrCurrentProfesorNombre = '';
+let qrDetectedData = null;
+let qrScanning = false;
+
+/**
+ * Abre el modal del escáner de QR e inicia la cámara.
+ * @param {number} idProfesor
+ * @param {string} nombreProfesor
+ * @param {boolean} tieneQr - true si ya existe un QR asignado
+ */
+async function openQrScannerModal(idProfesor, nombreProfesor, tieneQr) {
+  qrCurrentProfesorId = idProfesor;
+  qrCurrentProfesorNombre = nombreProfesor;
+  qrDetectedData = null;
+
+  // Actualizar textos del modal
+  const titleEl = document.getElementById('qr-modal-title');
+  const subtitleEl = document.getElementById('qr-profesor-name');
+  if (titleEl) titleEl.textContent = tieneQr ? 'Reemplazar Código QR' : 'Agregar Código QR';
+  if (subtitleEl) subtitleEl.textContent = `Docente: ${nombreProfesor}`;
+
+  // Resetear UI al estado inicial
+  _qrResetUI();
+
+  // Mostrar modal
+  document.getElementById('qr-scanner-modal').classList.remove('hidden');
+
+  // Iniciar cámara
+  await _qrStartCamera();
+}
+
+/** Inicia el stream de cámara y el loop de detección */
+async function _qrStartCamera() {
+  const video = document.getElementById('qr-video');
+  const statusText = document.getElementById('qr-status-text');
+  const statusDot = document.getElementById('qr-status-dot');
+
+  try {
+    // Detener stream previo si existe
+    _qrStopCamera();
+
+    const constraints = {
+      video: {
+        facingMode: 'environment', // Preferir cámara trasera en móviles
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+
+    qrStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = qrStream;
+
+    video.onloadedmetadata = () => {
+      video.play();
+      if (statusText) statusText.textContent = 'Cámara activa — Apunta al código QR';
+      if (statusDot) statusDot.className = 'qr-status-dot scanning';
+      qrScanning = true;
+      _qrScanLoop();
+    };
+  } catch (err) {
+    console.error('Error al acceder a la cámara:', err);
+    if (statusText) statusText.textContent = `❌ No se pudo acceder a la cámara: ${err.message}`;
+    if (statusDot) statusDot.className = 'qr-status-dot error';
+  }
+}
+
+/** Loop principal de detección QR — corre en cada animation frame */
+function _qrScanLoop() {
+  if (!qrScanning) return;
+
+  const video = document.getElementById('qr-video');
+  const canvas = document.getElementById('qr-canvas');
+  if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+    qrAnimFrame = requestAnimationFrame(_qrScanLoop);
+    return;
+  }
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // Decodificar con jsQR
+  if (typeof jsQR !== 'undefined') {
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
+
+    if (code && code.data) {
+      qrScanning = false;
+      qrDetectedData = code.data;
+      _qrOnDetected(code.data);
+      return;
+    }
+  }
+
+  qrAnimFrame = requestAnimationFrame(_qrScanLoop);
+}
+
+/** Maneja la detección exitosa de un QR */
+function _qrOnDetected(data) {
+  const statusText = document.getElementById('qr-status-text');
+  const statusDot = document.getElementById('qr-status-dot');
+  const resultBox = document.getElementById('qr-result-box');
+  const resultValue = document.getElementById('qr-result-value');
+  const rescanBtn = document.getElementById('qr-rescan-btn');
+  const confirmBtn = document.getElementById('qr-confirm-btn');
+  const scanLine = document.getElementById('qr-scan-line');
+
+  // Pausar video
+  const video = document.getElementById('qr-video');
+  if (video) video.pause();
+
+  // Actualizar estado
+  if (statusText) statusText.textContent = '✅ Código QR detectado correctamente';
+  if (statusDot) statusDot.className = 'qr-status-dot detected';
+  if (scanLine) scanLine.style.animationPlayState = 'paused';
+
+  // Mostrar resultado
+  if (resultValue) resultValue.textContent = data;
+  if (resultBox) resultBox.classList.remove('hidden');
+
+  // Mostrar botones de acción
+  if (rescanBtn) rescanBtn.classList.remove('hidden');
+  if (confirmBtn) confirmBtn.classList.remove('hidden');
+}
+
+/** Reinicia el escáner para escanear de nuevo */
+function restartQrScan() {
+  qrDetectedData = null;
+  _qrResetUI();
+  const video = document.getElementById('qr-video');
+  if (video && qrStream) {
+    video.play();
+    qrScanning = true;
+    _qrScanLoop();
+    const statusText = document.getElementById('qr-status-text');
+    const statusDot = document.getElementById('qr-status-dot');
+    if (statusText) statusText.textContent = 'Cámara activa — Apunta al código QR';
+    if (statusDot) statusDot.className = 'qr-status-dot scanning';
+  } else {
+    _qrStartCamera();
+  }
+}
+
+/** Guarda el QR detectado en la base de datos */
+async function confirmQrSave() {
+  if (!qrDetectedData || !qrCurrentProfesorId) return;
+
+  const confirmBtn = document.getElementById('qr-confirm-btn');
+  if (confirmBtn) { confirmBtn.textContent = '⏳ Guardando...'; confirmBtn.disabled = true; }
+
+  try {
+    let res = { success: false };
+    if (window.eel) {
+      res = await eel.update_qr_content(qrCurrentProfesorId, qrDetectedData)();
+    } else {
+      res = { success: true };
+    }
+
+    if (res.success) {
+      closeQrScannerModal();
+      loadCrudTable('profesor');
+      _showQrToast(`✅ QR guardado correctamente para ${qrCurrentProfesorNombre}`);
+    } else {
+      alert('Error al guardar el QR: ' + (res.error || 'Desconocido'));
+      if (confirmBtn) { confirmBtn.textContent = '💾 Guardar QR'; confirmBtn.disabled = false; }
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error de comunicación con el backend.');
+    if (confirmBtn) { confirmBtn.textContent = '💾 Guardar QR'; confirmBtn.disabled = false; }
+  }
+}
+
+/** Cierra el modal y detiene la cámara */
+function closeQrScannerModal() {
+  qrScanning = false;
+  _qrStopCamera();
+  document.getElementById('qr-scanner-modal').classList.add('hidden');
+  _qrResetUI();
+}
+
+/** Detiene el stream de cámara y cancela el animation frame */
+function _qrStopCamera() {
+  qrScanning = false;
+  if (qrAnimFrame) { cancelAnimationFrame(qrAnimFrame); qrAnimFrame = null; }
+  if (qrStream) {
+    qrStream.getTracks().forEach(track => track.stop());
+    qrStream = null;
+  }
+  const video = document.getElementById('qr-video');
+  if (video) video.srcObject = null;
+}
+
+/** Resetea la UI del modal al estado inicial */
+function _qrResetUI() {
+  const resultBox = document.getElementById('qr-result-box');
+  const rescanBtn = document.getElementById('qr-rescan-btn');
+  const confirmBtn = document.getElementById('qr-confirm-btn');
+  const statusText = document.getElementById('qr-status-text');
+  const statusDot = document.getElementById('qr-status-dot');
+  const scanLine = document.getElementById('qr-scan-line');
+
+  if (resultBox) resultBox.classList.add('hidden');
+  if (rescanBtn) rescanBtn.classList.add('hidden');
+  if (confirmBtn) { confirmBtn.classList.add('hidden'); confirmBtn.textContent = '💾 Guardar QR'; confirmBtn.disabled = false; }
+  if (statusText) statusText.textContent = 'Iniciando cámara... Apunta al código QR';
+  if (statusDot) statusDot.className = 'qr-status-dot scanning';
+  if (scanLine) scanLine.style.animationPlayState = 'running';
+}
+
+/** Muestra un toast de notificación temporal */
+function _showQrToast(message) {
+  const existing = document.getElementById('qr-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'qr-toast';
+  toast.className = 'qr-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('visible'));
+
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => toast.remove(), 400);
+  }, 3000);
 }

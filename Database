@@ -8,7 +8,8 @@ CREATE TABLE facultad (
 CREATE TABLE profesor (
     id_profesor INTEGER PRIMARY KEY AUTOINCREMENT,
     nb_profesor TEXT NOT NULL,
-    ap_profesor TEXT NOT NULL
+    ap_profesor TEXT NOT NULL,
+    qr_content TEXT NOT NULL
 );
 
 -- Tabla: materia
@@ -38,6 +39,7 @@ CREATE TABLE horario (
     FOREIGN KEY (id_materia) REFERENCES materia(id_materia) ON DELETE CASCADE,
     FOREIGN KEY (id_aula) REFERENCES aula(id_aula) ON DELETE CASCADE
 );
+
 
 -- Tabla: asistencias
 CREATE TABLE asistencias (

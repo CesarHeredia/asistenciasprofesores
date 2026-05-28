@@ -29,9 +29,16 @@ def init_database(db_path):
         CREATE TABLE IF NOT EXISTS profesor (
             id_profesor INTEGER PRIMARY KEY AUTOINCREMENT,
             nb_profesor TEXT NOT NULL,
-            ap_profesor TEXT NOT NULL
+            ap_profesor TEXT NOT NULL,
+            qr_content TEXT DEFAULT '' NOT NULL
         );
     """)
+
+    # Migración: agregar qr_content si ya existe la tabla sin esa columna
+    cur.execute("PRAGMA table_info(profesor);")
+    col_names = [row[1] for row in cur.fetchall()]
+    if 'qr_content' not in col_names:
+        cur.execute("ALTER TABLE profesor ADD COLUMN qr_content TEXT DEFAULT '' NOT NULL;")
 
     # 3. Tabla Materia
     cur.execute("""
@@ -118,7 +125,7 @@ def init_database(db_path):
         ]
         prof_ids = []
         for nb, ap in profesores_data:
-            cur.execute("INSERT INTO profesor (nb_profesor, ap_profesor) VALUES (?, ?);", (nb, ap))
+            cur.execute("INSERT INTO profesor (nb_profesor, ap_profesor, qr_content) VALUES (?, ?, '');", (nb, ap))
             prof_ids.append(cur.lastrowid)
 
         materias_data = [
@@ -420,6 +427,24 @@ def delete_schedule_slot(db_path, id_horario):
         return {"success": True}
     except Exception as e:
         print("Error eliminando horario en backend:", e)
+        return {"success": False, "error": str(e)}
+
+def update_qr_content(db_path, id_profesor, qr_content):
+    """Actualiza el contenido QR escaneado de un profesor específico en la base de datos."""
+    if not os.path.exists(db_path):
+        return {"success": False, "error": "BD no encontrada"}
+    try:
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        cur.execute(
+            "UPDATE profesor SET qr_content = ? WHERE id_profesor = ?",
+            (qr_content, id_profesor)
+        )
+        con.commit()
+        con.close()
+        return {"success": True}
+    except Exception as e:
+        print(f"Error actualizando QR del profesor {id_profesor} en backend:", e)
         return {"success": False, "error": str(e)}
 
 def get_stats_count(db_path):

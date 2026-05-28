@@ -48,3 +48,58 @@
     </footer>
   </div>
 </div>
+
+<!-- MODAL: Escáner de QR con Cámara -->
+<div class="modal-overlay hidden" id="qr-scanner-modal">
+  <div class="modal-card qr-scanner-card">
+    <header class="modal-header">
+      <div class="qr-modal-title-group">
+        <span class="qr-modal-icon">📷</span>
+        <div>
+          <h2 class="modal-title" id="qr-modal-title">Escáner de Código QR</h2>
+          <span class="qr-modal-subtitle" id="qr-profesor-name">Docente: —</span>
+        </div>
+      </div>
+      <button class="close-btn" onclick="closeQrScannerModal()">&times;</button>
+    </header>
+
+    <div class="modal-body qr-modal-body">
+      <!-- Video de la cámara -->
+      <div class="qr-video-wrapper" id="qr-video-wrapper">
+        <video id="qr-video" autoplay playsinline muted></video>
+        <canvas id="qr-canvas" style="display:none;"></canvas>
+        <!-- Marco de guía de escaneo -->
+        <div class="qr-guide-overlay">
+          <div class="qr-guide-corner tl"></div>
+          <div class="qr-guide-corner tr"></div>
+          <div class="qr-guide-corner bl"></div>
+          <div class="qr-guide-corner br"></div>
+          <div class="qr-scan-line" id="qr-scan-line"></div>
+        </div>
+      </div>
+
+      <!-- Estado del escáner -->
+      <div class="qr-status-bar" id="qr-status-bar">
+        <span class="qr-status-dot scanning" id="qr-status-dot"></span>
+        <span id="qr-status-text">Iniciando cámara... Apunta al código QR</span>
+      </div>
+
+      <!-- Panel de resultado (oculto hasta detectar) -->
+      <div class="qr-result-box hidden" id="qr-result-box">
+        <div class="qr-result-header">
+          <span>✅ ¡Código QR detectado!</span>
+        </div>
+        <div class="qr-result-content">
+          <label class="form-label" style="margin-bottom:6px;">Contenido extraído:</label>
+          <div class="qr-result-value" id="qr-result-value">—</div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="modal-footer">
+      <button class="modal-btn secondary-btn" onclick="closeQrScannerModal()">❌ Cancelar</button>
+      <button class="modal-btn qr-rescan-btn hidden" id="qr-rescan-btn" onclick="restartQrScan()">🔄 Volver a Escanear</button>
+      <button class="modal-btn qr-confirm-btn hidden" id="qr-confirm-btn" onclick="confirmQrSave()">💾 Guardar QR</button>
+    </footer>
+  </div>
+</div>

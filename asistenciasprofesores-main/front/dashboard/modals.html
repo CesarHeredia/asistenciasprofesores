@@ -1,0 +1,50 @@
+<!-- modals.html -->
+<!-- MODAL: Formularios Dinámicos de Registro (Añadir/Editar) -->
+<div class="modal-overlay hidden" id="crud-modal">
+  <div class="modal-card">
+    <header class="modal-header">
+      <h2 class="modal-title" id="modal-title">Añadir Registro</h2>
+      <button class="close-btn" onclick="closeCrudModal()">&times;</button>
+    </header>
+    <div class="modal-body">
+      <form id="crud-form">
+        <!-- Campos dinámicos renderizados desde app.js -->
+      </form>
+    </div>
+    <footer class="modal-footer">
+      <button class="modal-btn secondary-btn" onclick="closeCrudModal()">❌ Cancelar</button>
+      <button class="modal-btn" id="modal-submit-btn">💾 Guardar</button>
+    </footer>
+  </div>
+</div>
+
+<!-- MODAL: Asignación de Horario -->
+<div class="modal-overlay hidden" id="schedule-modal">
+  <div class="modal-card">
+    <header class="modal-header">
+      <h2 class="modal-title">Asignar Horario</h2>
+      <button class="close-btn" onclick="closeScheduleModal()">&times;</button>
+    </header>
+    <div class="modal-body">
+      <div class="schedule-details" id="schedule-details-text">
+        Día: Jueves | Horario: 15:15 - 17:30
+      </div>
+      <form id="schedule-form">
+        <div class="form-group">
+          <label class="form-label">Materia</label>
+          <select class="form-input" id="schedule-materia-select" required>
+            <option value="">Selecciona una Materia</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Aula</label>
+          <input type="text" class="form-input" id="schedule-aula-input" placeholder="Ej: 101-B o G-01" required />
+        </div>
+      </form>
+    </div>
+    <footer class="modal-footer">
+      <button class="modal-btn secondary-btn" onclick="closeScheduleModal()">❌ Cancelar</button>
+      <button class="modal-btn" id="schedule-submit-btn">💾 Guardar</button>
+    </footer>
+  </div>
+</div>

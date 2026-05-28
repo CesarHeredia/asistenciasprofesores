@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QScrollArea, QGridLayout, QLineEdit, QCheckBox, QSpacerItem, QSizePolicy, QStackedWidget, QTableView, QHeaderView, QMessageBox, QTableWidget, QTableWidgetItem)
 from PyQt6.QtGui import QColor, QIntValidator
 # pyrefly: ignore [missing-import]
-from PyQt6.QtCore import Qt, QSize, QEvent
+from PyQt6.QtCore import Qt, QSize, QEvent, QTimer, QTime
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 import os
 
@@ -17,6 +17,7 @@ class MainWindow(QMainWindow):
         
         self.load_styles()
         self.setup_ui()
+        self.setup_clock()
 
     def load_styles(self):
         try:
@@ -76,216 +77,98 @@ class MainWindow(QMainWindow):
         self.schedule_form_view = self.create_schedule_form_view()
         self.stacked_widget.addWidget(self.schedule_form_view)
 
-    def create_left_sidebar(self):
-        sidebar = QFrame()
-        sidebar.setObjectName("LeftSidebar")
-        sidebar.setFixedWidth(240)
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 30, 0, 0)
-        layout.setSpacing(0)
+    def setup_clock(self):
+        self.last_minute = -1
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_clock)
+        self.clock_timer.start(1000) # Update every second
+        self.update_clock() # Initial call
 
-        # Logo "G"
-        logo_container = QWidget()
-        logo_layout = QHBoxLayout(logo_container)
-        logo_label = QLabel("G")
-        logo_label.setObjectName("LogoLabel")
-        logo_layout.addWidget(logo_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(logo_container)
-        layout.addSpacing(30)
+    def update_clock(self):
+        current_time = QTime.currentTime()
+        time_text = current_time.toString("HH:mm:ss")
+        if hasattr(self, 'clock_label'):
+            self.clock_label.setText(time_text)
+            
+        current_minute = current_time.minute()
+        # Solo actualiza las tarjetas automáticamente si el usuario está en la página principal
+        if current_minute != self.last_minute:
+            self.last_minute = current_minute
+            if hasattr(self, 'cards_grid_layout') and hasattr(self, 'stacked_widget'):
+                if self.stacked_widget.currentIndex() == 0:
+                    self.update_profesores_cards()
 
-        # Botones del menú
-        self.btn_profesores = QPushButton("👥  Gestionar\n      profesores")
-        self.btn_profesores.setObjectName("MenuButton")
-        self.btn_profesores.setFixedHeight(70)
-        self.btn_profesores.clicked.connect(lambda: self.show_db_view("profesor"))
+    def update_profesores_cards(self):
+        if not hasattr(self, 'cards_grid_layout'):
+            return
+            
+        # Clear existing cards
+        while self.cards_grid_layout.count():
+            item = self.cards_grid_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+                
+        import datetime
+        now = datetime.datetime.now()
+        dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        dia_actual = dias[now.weekday()]
+        hora_actual = now.strftime("%H:%M")
+
+        query = QSqlDatabase.database().exec(f"""
+            SELECT p.id_profesor, p.nb_profesor, p.ap_profesor,
+                   m.nb_materia, h.num_aula
+            FROM profesor p
+            LEFT JOIN horario h ON p.id_profesor = h.id_profesor
+                AND h.dia_semana = '{dia_actual}'
+                AND h.hora_inicio <= '{hora_actual}'
+                AND h.hora_fin >= '{hora_actual}'
+            LEFT JOIN materia m ON h.id_materia = m.id_materia
+        """)
         
-        # Usaremos una 'M' literal para simular el tercer icono si es necesario
-        self.btn_materias = QPushButton("M   Gestionar\n      Materias")
-        self.btn_materias.setObjectName("MenuButton")
-        self.btn_materias.setFixedHeight(70)
-        self.btn_materias.clicked.connect(lambda: self.show_db_view("materia"))
-
-        layout.addWidget(self.btn_profesores)
-        layout.addWidget(self.btn_materias)
-        
-        layout.addStretch() # Empuja todo hacia arriba
-        return sidebar
-
-    def create_center_panel(self):
-        panel = QFrame()
-        panel.setObjectName("CenterPanel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(40, 40, 40, 30)
-        layout.setSpacing(30)
-
-        # Título
-        title = QLabel("SISTEMA DE ASISTENCIA - PANEL DE CONTROL")
-        title.setObjectName("MainTitle")
-        layout.addWidget(title)
-
-        # Área de Scroll para las tarjetas
-        scroll_area = QScrollArea()
-        scroll_area.setObjectName("ScrollArea")
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-
-        scroll_content = QWidget()
-        scroll_content.setObjectName("ScrollContent")
-        grid_layout = QGridLayout(scroll_content)
-        grid_layout.setSpacing(25)
-        grid_layout.setContentsMargins(10, 10, 10, 10)
-
-        # Agregar 4 tarjetas de ejemplo basadas en la imagen
-        tarjetas_datos = [
-            ("Dr. Carlos Rodríguez", "Algoritmos Avanzados", "101-B", "Ingeniería", "🧔🏽"),
-            ("Dra. Ana Pérez", "Introducción a la Física", "205", "Ciencias Exactas", "👩🏻"),
-            ("Lic. Sofía Martínez", "Historia del Arte", "310", "Humanidades", "👩🏽"),
-            ("Ing. David Chen", "Programación de Sistemas", "G-01", "Ingeniería", "👨🏻")
-        ]
-
+        tarjetas_datos = []
+        while query.next():
+            nb_profesor = query.value(1)
+            ap_profesor = query.value(2)
+            nombre_completo = f"{nb_profesor} {ap_profesor}"
+            
+            nb_materia = query.value(3)
+            num_aula = query.value(4)
+            
+            if nb_materia:
+                materia = nb_materia
+                aula = num_aula if num_aula else "Sin Aula"
+            else:
+                materia = "Horalibre"
+                aula = None
+                
+            tarjetas_datos.append((nombre_completo, materia, aula, "", True))
+            
         row, col = 0, 0
         for data in tarjetas_datos:
             card = self.create_profesor_card(*data)
-            grid_layout.addWidget(card, row, col)
+            self.cards_grid_layout.addWidget(card, row, col)
             col += 1
             if col > 1: # 2 columnas
                 col = 0
                 row += 1
 
-        # Empujar las tarjetas hacia arriba si hay espacio vacío
-        grid_layout.setRowStretch(row + 1, 1)
+        self.cards_grid_layout.setRowStretch(row + 1, 1)
 
-        scroll_area.setWidget(scroll_content)
-        layout.addWidget(scroll_area)
+    def create_left_sidebar(self):
+        from ui.sidebar import create_left_sidebar
+        return create_left_sidebar(self)
 
-        # Botón "Ver más"
-        ver_mas_btn = QPushButton("⬇️\nVer más profesores...")
-        ver_mas_btn.setObjectName("VerMasBtn")
-        ver_mas_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout.addWidget(ver_mas_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+    def create_center_panel(self):
+        from ui.center import create_center_panel
+        return create_center_panel(self)
 
-        return panel
-
-    def create_profesor_card(self, nombre, materia, aula, facultad, avatar_emoji):
-        card = QFrame()
-        card.setObjectName("ProfesorCard")
-        # Aplicamos una política de tamaño para que se ajusten bien
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        card.setMinimumHeight(200)
-        
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(25, 25, 25, 25)
-        layout.setSpacing(15)
-
-        # Header de la tarjeta (Avatar + Nombre)
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(15)
-        
-        avatar_lbl = QLabel(avatar_emoji)
-        avatar_lbl.setObjectName("Avatar")
-        avatar_lbl.setFixedSize(60, 60)
-        avatar_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        name_container = QWidget()
-        name_layout = QVBoxLayout(name_container)
-        name_layout.setContentsMargins(0, 0, 0, 0)
-        name_layout.setSpacing(2)
-        
-        lbl_profesor_title = QLabel("Profesor Name:")
-        lbl_profesor_title.setObjectName("CardLabelSmall")
-        lbl_nombre = QLabel(nombre)
-        lbl_nombre.setObjectName("CardName")
-        
-        name_layout.addWidget(lbl_profesor_title)
-        name_layout.addWidget(lbl_nombre)
-        name_layout.addStretch()
-
-        header_layout.addWidget(avatar_lbl)
-        header_layout.addWidget(name_container)
-        header_layout.addStretch()
-
-        layout.addLayout(header_layout)
-
-        # Detalles
-        def add_detail_row(label_text, value_text):
-            row = QHBoxLayout()
-            lbl = QLabel(label_text)
-            lbl.setObjectName("CardLabelBold")
-            val = QLabel(value_text)
-            val.setObjectName("CardValueNormal")
-            row.addWidget(lbl)
-            row.addWidget(val)
-            row.addStretch()
-            layout.addLayout(row)
-
-        add_detail_row("Materia:", materia)
-        add_detail_row("Aula:", aula)
-        add_detail_row("Facultad:", facultad)
-
-        return card
+    def create_profesor_card(self, nombre, materia, aula, avatar_emoji, presente=True):
+        from ui.center import create_profesor_card
+        return create_profesor_card(self, nombre, materia, aula, avatar_emoji, presente)
 
     def create_right_sidebar(self):
-        sidebar = QFrame()
-        sidebar.setObjectName("RightSidebar")
-        sidebar.setFixedWidth(280)
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(25, 40, 25, 40)
-        layout.setSpacing(20)
-
-        # Búsqueda
-        search_input = QLineEdit()
-        search_input.setObjectName("SearchInput")
-        search_input.setPlaceholderText("BUSCAR")
-        layout.addWidget(search_input)
-
-        layout.addSpacing(10)
-
-        # Filtros
-        lbl_filtrar = QLabel("FILTRAR POR:")
-        lbl_filtrar.setObjectName("FilterTitle")
-        layout.addWidget(lbl_filtrar)
-
-        def add_combo_filter(title):
-            lbl = QLabel(title)
-            lbl.setObjectName("FilterLabel")
-            combo = QComboBox()
-            combo.setObjectName("FilterCombo")
-            combo.addItem(title)
-            layout.addWidget(lbl)
-            layout.addWidget(combo)
-
-        add_combo_filter("Materia")
-        add_combo_filter("Facultad")
-        add_combo_filter("Edificio")
-
-        layout.addSpacing(10)
-
-        # Checkboxes
-        for i in range(1, 5):
-            cb = QCheckBox(f"Departamento {i}")
-            cb.setObjectName("FilterCheck")
-            layout.addWidget(cb)
-
-        layout.addSpacing(15)
-
-        # Estado Asistencia
-        lbl_estado = QLabel("Estado de Asistencia:")
-        lbl_estado.setObjectName("FilterTitle")
-        layout.addWidget(lbl_estado)
-
-        combo_estado1 = QComboBox()
-        combo_estado1.setObjectName("FilterCombo")
-        combo_estado1.addItem("Asistencia")
-        
-        combo_estado2 = QComboBox()
-        combo_estado2.setObjectName("FilterCombo")
-        combo_estado2.addItem("Asistencia")
-
-        layout.addWidget(combo_estado1)
-        layout.addWidget(combo_estado2)
-
-        layout.addStretch()
-        return sidebar
+        from ui.sidebar import create_right_sidebar
+        return create_right_sidebar()
 
     def update_sidebar_active(self, active_view):
         if hasattr(self, 'btn_profesores') and hasattr(self, 'btn_materias'):
@@ -306,95 +189,14 @@ class MainWindow(QMainWindow):
     def show_main_view(self):
         self.stacked_widget.setCurrentIndex(0)
         self.update_sidebar_active(None)
+        # Forzar actualización inmediata al volver al inicio
+        if hasattr(self, 'cards_grid_layout'):
+            self.last_minute = -1  # Resetear para que el timer vuelva a comparar en el próximo tick
+            self.update_profesores_cards()
 
     def create_db_view(self):
-        panel = QFrame()
-        panel.setObjectName("CenterPanel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(40, 40, 40, 30)
-        layout.setSpacing(20)
-
-        # Título y Botón Volver
-        header_layout = QHBoxLayout()
-        self.lbl_db_title = QLabel("Gestion USM")
-        self.lbl_db_title.setObjectName("MainTitle")
-        
-        btn_volver = QPushButton("Volver")
-        btn_volver.setFixedWidth(100)
-        btn_volver.setStyleSheet("color: white;")
-        btn_volver.clicked.connect(self.show_main_view)
-        
-        header_layout.addWidget(self.lbl_db_title)
-        header_layout.addStretch()
-        header_layout.addWidget(btn_volver)
-        layout.addLayout(header_layout)
-
-        # Controles de BD
-        controls_layout = QHBoxLayout()
-        controls_layout.addStretch()
-        
-        btn_add = QPushButton("➕ Añadir Fila")
-        btn_add.setStyleSheet("color: white;")
-        btn_add.clicked.connect(self.show_add_form)
-        
-        controls_layout.addWidget(btn_add)
-        
-        layout.addLayout(controls_layout)
-
-        # Tabla
-        self.table_view = QTableView()
-        self.table_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        # Aplicamos un estilo a la tabla para que se vea bonita y parezca un excel
-        self.table_view.setStyleSheet("""
-            QTableView {
-                background-color: white;
-                color: black;
-                border: 1px solid #ccc;
-                gridline-color: #a0a0a0;
-            }
-            QHeaderView::section {
-                background-color: black;
-                color: white;
-                font-weight: bold;
-                padding: 4px;
-            }
-            QTableView::item {
-                padding: 5px;
-                color: black;
-            }
-            QTableView::item:selected {
-                background-color: #e0f0ff;
-                color: black;
-            }
-        """)
-        
-        self.table_view.setMouseTracking(True)
-        self.btn_inline_del = QPushButton("🗑️", self.table_view.viewport())
-        self.btn_inline_del.setFixedSize(28, 28)
-        self.btn_inline_del.setStyleSheet("""
-            QPushButton {
-                background-color: #ff4c4c;
-                color: white;
-                border-radius: 14px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #ff1c1c;
-            }
-        """)
-        self.btn_inline_del.hide()
-        self.btn_inline_del.clicked.connect(self.inline_delete_row)
-        
-        self.table_view.entered.connect(self.on_table_hover)
-        self.table_view.viewport().installEventFilter(self)
-        self.table_view.clicked.connect(self.on_db_table_clicked)
-        
-        layout.addWidget(self.table_view)
-
-        # Inicializar modelo
-        self.db_model = None
-
-        return panel
+        from ui.db_view import create_db_view
+        return create_db_view(self)
 
     def on_db_table_clicked(self, index):
         if not index.isValid(): return
@@ -442,40 +244,8 @@ class MainWindow(QMainWindow):
         self.table_view.hideColumn(0)
 
     def create_form_view(self):
-        form_widget = QWidget()
-        layout = QVBoxLayout(form_widget)
-        layout.setContentsMargins(40, 40, 40, 40)
-        
-        self.form_title = QLabel("Añadir Registro")
-        self.form_title.setObjectName("MainTitle")
-        layout.addWidget(self.form_title)
-        
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
-        
-        scroll_content = QWidget()
-        self.form_layout = QGridLayout(scroll_content)
-        self.form_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        scroll.setWidget(scroll_content)
-        
-        layout.addWidget(scroll)
-        
-        btn_layout = QHBoxLayout()
-        btn_save = QPushButton("💾 Guardar")
-        btn_save.setStyleSheet("color: white;")
-        btn_save.clicked.connect(self.save_form_data)
-        
-        btn_cancel = QPushButton("❌ Cancelar")
-        btn_cancel.setStyleSheet("color: white;")
-        btn_cancel.clicked.connect(self.cancel_add_row)
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_save)
-        btn_layout.addWidget(btn_cancel)
-        
-        layout.addLayout(btn_layout)
-        return form_widget
+        from ui.forms import create_form_view
+        return create_form_view(self)
 
     def show_add_form(self):
         if not self.db_model:
@@ -595,85 +365,8 @@ class MainWindow(QMainWindow):
                 self.btn_inline_del.hide()
 
     def create_schedule_view(self):
-        panel = QFrame()
-        panel.setObjectName("CenterPanel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(40, 40, 40, 30)
-        layout.setSpacing(20)
-
-        # Header
-        header_layout = QHBoxLayout()
-        self.lbl_schedule_title = QLabel("HORARIO SEMANAL")
-        self.lbl_schedule_title.setObjectName("MainTitle")
-        self.lbl_schedule_title.setStyleSheet("color: gray;")
-        
-        btn_volver = QPushButton("Volver a Profesores")
-        btn_volver.setFixedWidth(180)
-        btn_volver.setStyleSheet("color: white;")
-        btn_volver.clicked.connect(lambda: self.show_db_view("profesor"))
-        
-        header_layout.addWidget(self.lbl_schedule_title)
-        header_layout.addStretch()
-        header_layout.addWidget(btn_volver)
-        layout.addLayout(header_layout)
-
-        # Header Info
-        info_layout = QHBoxLayout()
-        info_layout.addStretch()
-        lbl_info = QLabel("Arrastra el ratón sobre los bloques vacíos para asignar un horario")
-        lbl_info.setStyleSheet("color: gray; margin-bottom: 10px;")
-        info_layout.addWidget(lbl_info)
-        layout.addLayout(info_layout)
-
-        # Grid
-        self.schedule_table = QTableWidget(14, 5) # 14 rows, 5 columns
-        self.schedule_table.setHorizontalHeaderLabels(["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"])
-        
-        self.time_slots = [
-            "07:00 - 07:45", "07:45 - 08:30", "08:30 - 09:15", "09:15 - 10:00",
-            "10:00 - 10:45", "10:45 - 11:30", "11:30 - 12:15", "12:15 - 13:00",
-            "13:00 - 13:45", "13:45 - 14:30", "14:30 - 15:15", "15:15 - 16:00",
-            "16:00 - 16:45", "16:45 - 17:30"
-        ]
-        self.schedule_table.setVerticalHeaderLabels(self.time_slots)
-        self.schedule_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.schedule_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        self.schedule_table.verticalHeader().setDefaultSectionSize(65)
-        
-        self.schedule_table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                color: black;
-                border: 1px solid #eee;
-                gridline-color: #f0f0f0;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: white;
-                color: gray;
-                font-weight: normal;
-                padding: 4px;
-                border: none;
-                border-bottom: 1px solid #eee;
-                border-right: 1px solid #eee;
-            }
-            QTableWidget::item {
-                border: 1px solid #f9f9f9;
-            }
-            QTableWidget::item:selected {
-                background-color: transparent;
-            }
-        """)
-        
-        self.schedule_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.schedule_table.setSelectionMode(QTableWidget.SelectionMode.ContiguousSelection)
-        self.schedule_table.viewport().installEventFilter(self)
-        self.schedule_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        
-        layout.addWidget(self.schedule_table)
-        
-        self.current_profesor_id = None
-        return panel
+        from ui.schedule import create_schedule_view
+        return create_schedule_view(self)
 
     def show_schedule_view(self, id_profesor, nb_profesor):
         self.current_profesor_id = id_profesor
@@ -777,94 +470,20 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "No tienes ninguna materia guardada en el sistema. Añade una materia primero.")
             self.schedule_table.clearSelection()
             return
+
+        # Mostrar/ocultar botón eliminar según si hay bloques asignados
+        tiene_bloques = any(
+            self.schedule_table.item(r, col) and self.schedule_table.item(r, col).text()
+            for r in range(start_row, end_row + 1)
+        )
+        self.btn_delete_schedule.setVisible(tiene_bloques)
             
         # Cambiar a la vista del formulario (página 5, índice 4)
         self.stacked_widget.setCurrentIndex(4)
 
     def create_schedule_form_view(self):
-        panel = QFrame()
-        panel.setObjectName("CenterPanel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(40, 40, 40, 30)
-        layout.setSpacing(20)
-
-        # Title
-        lbl_title = QLabel("Asignar Horario")
-        lbl_title.setObjectName("MainTitle")
-        lbl_title.setStyleSheet("color: black; font-size: 24px; font-weight: bold;")
-        
-        self.lbl_schedule_form_range = QLabel("")
-        self.lbl_schedule_form_range.setStyleSheet("color: gray; font-size: 16px; margin-bottom: 20px;")
-        
-        layout.addWidget(lbl_title)
-        layout.addWidget(self.lbl_schedule_form_range)
-
-        # Form layout
-        form_layout = QGridLayout()
-        form_layout.setSpacing(20)
-        
-        lbl_materia = QLabel("Materia:")
-        lbl_materia.setStyleSheet("color: black; font-size: 16px;")
-        self.combo_schedule_form_materia = QComboBox()
-        self.combo_schedule_form_materia.setFixedHeight(40)
-        self.combo_schedule_form_materia.setStyleSheet("""
-            QComboBox {
-                border: 1px solid #ccc;
-                border-radius: 5px;
-                padding: 5px;
-                color: black;
-                background-color: white;
-            }
-        """)
-        
-        lbl_aula = QLabel("Número de Aula:")
-        lbl_aula.setStyleSheet("color: black; font-size: 16px;")
-        self.input_schedule_form_aula = QLineEdit()
-        self.input_schedule_form_aula.setPlaceholderText("Ej. 123 (máx 3 dígitos numéricos)")
-        self.input_schedule_form_aula.setFixedHeight(40)
-        self.input_schedule_form_aula.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #ccc;
-                border-radius: 5px;
-                padding: 5px;
-                color: black;
-                background-color: white;
-            }
-        """)
-        
-        validator = QIntValidator()
-        self.input_schedule_form_aula.setValidator(validator)
-        self.input_schedule_form_aula.setMaxLength(3)
-
-        form_layout.addWidget(lbl_materia, 0, 0)
-        form_layout.addWidget(self.combo_schedule_form_materia, 0, 1)
-        form_layout.addWidget(lbl_aula, 1, 0)
-        form_layout.addWidget(self.input_schedule_form_aula, 1, 1)
-        
-        layout.addLayout(form_layout)
-        layout.addStretch()
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.setObjectName("MenuButton")
-        btn_cancel.setStyleSheet("color: white;")
-        btn_cancel.clicked.connect(self.cancel_schedule_form)
-        
-        btn_save = QPushButton("Guardar")
-        btn_save.setObjectName("MenuButtonActive")
-        btn_save.setStyleSheet("color: white;")
-        btn_save.clicked.connect(self.save_schedule_form)
-        
-        btn_layout.addWidget(btn_cancel)
-        btn_layout.addWidget(btn_save)
-        
-        layout.addLayout(btn_layout)
-        
-        self.pending_schedule = {}
-        return panel
+        from ui.schedule import create_schedule_form_view
+        return create_schedule_form_view(self)
 
     def cancel_schedule_form(self):
         self.schedule_table.clearSelection()
@@ -918,6 +537,48 @@ class MainWindow(QMainWindow):
                 if query.lastError().isValid():
                     QMessageBox.critical(self, "Error", f"No se guardó el horario: {query.lastError().text()}")
                 
+        self.load_schedule_data()
+        self.schedule_table.clearSelection()
+        self.stacked_widget.setCurrentIndex(3)
+
+    def delete_schedule_form(self):
+        if not self.pending_schedule:
+            return
+
+        col = self.pending_schedule['col']
+        start_row = self.pending_schedule['start_row']
+        end_row = self.pending_schedule['end_row']
+        dia = self.pending_schedule['dia']
+
+        dias_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
+        h_inicio = self.time_slots[start_row].split(" - ")[0]
+        h_fin = self.time_slots[end_row].split(" - ")[1]
+
+        respuesta = QMessageBox.question(
+            self,
+            "Confirmar Eliminación",
+            f"¿Estás seguro de que deseas eliminar el horario del {dia} de {h_inicio} a {h_fin}?\n\nEsta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if respuesta != QMessageBox.StandardButton.Yes:
+            return
+
+        eliminados = 0
+        for row in range(start_row, end_row + 1):
+            item = self.schedule_table.item(row, col)
+            if item and item.text():
+                id_h = item.data(Qt.ItemDataRole.UserRole)
+                if id_h:
+                    QSqlDatabase.database().exec(f"DELETE FROM horario WHERE id_horario = {id_h}")
+                    eliminados += 1
+
+        if eliminados > 0:
+            QMessageBox.information(self, "Éxito", f"Se eliminaron {eliminados} bloque(s) de horario correctamente.")
+        else:
+            QMessageBox.warning(self, "Aviso", "No se encontraron bloques con horario asignado para eliminar.")
+
         self.load_schedule_data()
         self.schedule_table.clearSelection()
         self.stacked_widget.setCurrentIndex(3)

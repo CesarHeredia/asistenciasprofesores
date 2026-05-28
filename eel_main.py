@@ -67,7 +67,37 @@ def get_stats_count():
     return backend.get_stats_count(DB_PATH)
 
 if __name__ == '__main__':
-    # Arranca en modo de escritorio optimizado usando Edge (Chromium)
-    # y el tamaño panorámico del panel original.
     print("Iniciando aplicación de asistencia académica...")
-    eel.start('index.html', size=(1300, 800), mode='edge', port=8080)
+    
+    import sys
+    import threading
+    import socket
+    
+    # Encontrar un puerto libre automáticamente para evitar el error "Address already in use"
+    def get_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('localhost', 0))
+            return s.getsockname()[1]
+            
+    free_port = get_free_port()
+
+    try:
+        import webview
+    except ImportError:
+        print("Instalando pywebview...")
+        import os
+        os.system(f"{sys.executable} -m pip install pywebview")
+        import webview
+
+    def start_eel():
+        # Usamos el puerto libre encontrado
+        eel.start('index.html', mode=None, port=free_port)
+
+    # Iniciamos Eel en un hilo de fondo
+    t = threading.Thread(target=start_eel)
+    t.daemon = True
+    t.start()
+
+    # Abrimos una ventana nativa de escritorio que carga la URL local con el puerto dinámico
+    webview.create_window("Sistema de Asistencia", f"http://localhost:{free_port}/index.html", width=1300, height=800)
+    webview.start()

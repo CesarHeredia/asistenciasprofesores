@@ -71,6 +71,16 @@ def get_stats_count():
     """Devuelve las estadísticas reales de la base de datos (profesores, materias, horas y asistencias)."""
     return backend.get_stats_count(DB_PATH)
 
+@eel.expose
+def register_attendance_by_qr(qr_content):
+    """Registra la asistencia de un profesor por su QR (entrada o salida)."""
+    return backend.register_attendance_by_qr(DB_PATH, qr_content)
+
+@eel.expose
+def get_attendance_history():
+    """Devuelve el historial completo de asistencias para auditoria."""
+    return backend.get_attendance_history(DB_PATH)
+
 if __name__ == '__main__':
     import socket
     import threading

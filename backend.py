@@ -477,3 +477,102 @@ def get_stats_count(db_path):
     except Exception as e:
         print("Error obteniendo estadísticas agregadas en backend:", e)
         return stats
+
+def register_attendance_by_qr(db_path, qr_content):
+    """Busca al profesor por su código QR y registra su entrada o salida en la tabla de asistencias.
+    Retorna un diccionario con el estado y los detalles.
+    """
+    import datetime
+    if not os.path.exists(db_path):
+        return {"success": False, "error": "Base de datos no encontrada"}
+    if not qr_content or not qr_content.strip():
+        return {"success": False, "error": "Contenido QR vacío"}
+        
+    try:
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        
+        # 1. Buscar profesor por QR
+        cur.execute("SELECT id_profesor, nb_profesor, ap_profesor FROM profesor WHERE qr_content = ?", (qr_content.strip(),))
+        row = cur.fetchone()
+        if not row:
+            con.close()
+            return {"success": False, "error": "El código QR escaneado no está registrado a ningún profesor."}
+            
+        id_profesor = row["id_profesor"]
+        nombre_completo = f"{row['nb_profesor']} {row['ap_profesor']}".strip()
+        
+        # 2. Determinar si es entrada o salida hoy
+        today_str = datetime.date.today().isoformat() # YYYY-MM-DD
+        current_time_str = datetime.datetime.now().strftime("%H:%M:%S") # HH:MM:SS
+        
+        # Buscar el último registro de hoy para este profesor
+        cur.execute("""
+            SELECT id_asistencia, hora_entrada, hora_salida 
+            FROM asistencias 
+            WHERE id_profesor = ? AND fecha_asistencia = ? 
+            ORDER BY id_asistencia DESC LIMIT 1
+        """, (id_profesor, today_str))
+        
+        last_attendance = cur.fetchone()
+        
+        if last_attendance and (last_attendance["hora_salida"] is None or last_attendance["hora_salida"] == ""):
+            # Registrar SALIDA (actualizar registro)
+            id_asistencia = last_attendance["id_asistencia"]
+            cur.execute("""
+                UPDATE asistencias 
+                SET hora_salida = ? 
+                WHERE id_asistencia = ?
+            """, (current_time_str, id_asistencia))
+            tipo = "salida"
+        else:
+            # Registrar ENTRADA (nuevo registro)
+            cur.execute("""
+                INSERT INTO asistencias (id_profesor, fecha_asistencia, hora_entrada, hora_salida)
+                VALUES (?, ?, ?, NULL)
+            """, (id_profesor, today_str, current_time_str))
+            tipo = "entrada"
+            
+        con.commit()
+        con.close()
+        
+        return {
+            "success": True,
+            "profesor_id": id_profesor,
+            "profesor": nombre_completo,
+            "tipo": tipo,
+            "hora": current_time_str,
+            "fecha": today_str
+        }
+    except Exception as e:
+        print("Error registrando asistencia por QR:", e)
+        return {"success": False, "error": f"Error en la base de datos: {str(e)}"}
+
+def get_attendance_history(db_path):
+    """Retorna el historial completo de entradas y salidas de los profesores, ordenado por fecha y hora descendente."""
+    if not os.path.exists(db_path):
+        return []
+    try:
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        query = """
+            SELECT 
+                a.id_asistencia,
+                a.fecha_asistencia,
+                a.hora_entrada,
+                a.hora_salida,
+                p.id_profesor,
+                p.nb_profesor,
+                p.ap_profesor
+            FROM asistencias a
+            JOIN profesor p ON a.id_profesor = p.id_profesor
+            ORDER BY a.fecha_asistencia DESC, a.hora_entrada DESC
+        """
+        cur.execute(query)
+        rows = [dict(r) for r in cur.fetchall()]
+        con.close()
+        return rows
+    except Exception as e:
+        print("Error obteniendo historial de asistencias:", e)
+        return []
+

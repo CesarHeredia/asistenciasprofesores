@@ -87,7 +87,8 @@ const friendlyNames = {
 const viewPartials = {
   'dashboard': 'dashboard/dashboard.html',
   'database-profesores': 'dashboard/profesores.html',
-  'database-materias': 'dashboard/materias.html'
+  'database-materias': 'dashboard/materias.html',
+  'auditoria': 'dashboard/auditoria.html'
 };
 
 // ==========================================================================
@@ -113,7 +114,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadModals();
   initNavigation();
   initClock();
-  navigateView('dashboard');
+  initLandingAndLoginEvents();
+  
+  // Iniciar con el lector QR de profesores en la landing page
+  startLandingQrScanner();
 
   if (window.eel) {
     console.log("Eel cargado y listo.");
@@ -121,6 +125,61 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.warn("Eel no está disponible. Ejecutando con datos mock.");
   }
 });
+
+function initLandingAndLoginEvents() {
+  // Navegación: Ir a Administrador
+  document.getElementById('btn-go-to-admin').addEventListener('click', () => {
+    stopLandingQrScanner();
+    document.getElementById('landing-layout').classList.add('hidden');
+    document.getElementById('login-layout').classList.remove('hidden');
+    document.getElementById('login-error-msg').classList.add('hidden');
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+  });
+
+  // Navegación: Volver a Lector
+  document.getElementById('btn-back-to-scanner').addEventListener('click', () => {
+    document.getElementById('login-layout').classList.add('hidden');
+    document.getElementById('landing-layout').classList.remove('hidden');
+    startLandingQrScanner();
+  });
+
+  // Formulario de Login Admin (admin / admin)
+  document.getElementById('admin-login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const user = document.getElementById('login-username').value.trim();
+    const pass = document.getElementById('login-password').value.trim();
+
+    if (user === 'admin' && pass === 'admin') {
+      // Éxito: Entrar a la app de admin
+      document.getElementById('login-layout').classList.add('hidden');
+      document.getElementById('admin-layout').classList.remove('hidden');
+      
+      // Iniciar el dashboard admin
+      initFilters();
+      navigateView('dashboard');
+    } else {
+      // Error
+      document.getElementById('login-error-msg').classList.remove('hidden');
+    }
+  });
+
+  // Navegación: Cerrar Sesión
+  document.getElementById('btn-admin-logout').addEventListener('click', () => {
+    // Detener auto-refrescos
+    if (dashboardRefreshInterval) {
+      clearInterval(dashboardRefreshInterval);
+      dashboardRefreshInterval = null;
+    }
+    
+    // Ocultar layout de administrador, mostrar landing
+    document.getElementById('admin-layout').classList.add('hidden');
+    document.getElementById('landing-layout').classList.remove('hidden');
+    
+    // Volver a iniciar el escáner del landing
+    startLandingQrScanner();
+  });
+}
 
 async function loadModals() {
   try {
@@ -192,6 +251,8 @@ async function navigateView(viewName) {
     loadCrudTable('materia');
   } else if (viewName === 'horarios' && currentSelectedProfesor) {
     renderHorarioView();
+  } else if (viewName === 'auditoria') {
+    loadAuditTable();
   }
 }
 
@@ -1286,4 +1347,303 @@ function _showQrToast(message) {
     toast.classList.remove('visible');
     setTimeout(() => toast.remove(), 400);
   }, 3000);
+}
+
+// ==========================================================================
+// 10. Módulo de Escáner de Asistencias en Landing Page
+// ==========================================================================
+let landingQrStream = null;
+let landingQrAnimFrame = null;
+let landingQrScanning = false;
+let landingResultTimeout = null;
+
+async function startLandingQrScanner() {
+  landingQrScanning = false;
+  _stopLandingQrStream();
+  
+  const video = document.getElementById('landing-qr-video');
+  const statusText = document.getElementById('landing-status-text');
+  const statusDot = document.getElementById('landing-status-dot');
+  
+  if (!video) return;
+
+  // Cargar feed de asistencia en la landing
+  loadRecentFeed();
+
+  try {
+    const constraints = {
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      }
+    };
+    
+    landingQrStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = landingQrStream;
+    
+    video.onloadedmetadata = () => {
+      video.play();
+      if (statusText) statusText.textContent = 'Lector activo — Apunta tu código QR';
+      if (statusDot) statusDot.className = 'qr-status-dot scanning';
+      landingQrScanning = true;
+      landingQrScanLoop();
+    };
+  } catch (err) {
+    console.error('Error al acceder a la cámara de landing:', err);
+    if (statusText) statusText.textContent = `❌ No se pudo activar el lector: ${err.message}`;
+    if (statusDot) statusDot.className = 'qr-status-dot error';
+  }
+}
+
+function stopLandingQrScanner() {
+  landingQrScanning = false;
+  _stopLandingQrStream();
+}
+
+function _stopLandingQrStream() {
+  if (landingQrAnimFrame) {
+    cancelAnimationFrame(landingQrAnimFrame);
+    landingQrAnimFrame = null;
+  }
+  if (landingQrStream) {
+    landingQrStream.getTracks().forEach(track => track.stop());
+    landingQrStream = null;
+  }
+  const video = document.getElementById('landing-qr-video');
+  if (video) video.srcObject = null;
+}
+
+function landingQrScanLoop() {
+  if (!landingQrScanning) return;
+  
+  const video = document.getElementById('landing-qr-video');
+  const canvas = document.getElementById('landing-qr-canvas');
+  
+  if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+    landingQrAnimFrame = requestAnimationFrame(landingQrScanLoop);
+    return;
+  }
+  
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  if (typeof jsQR !== 'undefined') {
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
+    
+    if (code && code.data) {
+      landingQrScanning = false;
+      handleLandingQrResult(code.data);
+      return;
+    }
+  }
+  
+  landingQrAnimFrame = requestAnimationFrame(landingQrScanLoop);
+}
+
+async function handleLandingQrResult(qrData) {
+  const statusText = document.getElementById('landing-status-text');
+  const statusDot = document.getElementById('landing-status-dot');
+  const resultBox = document.getElementById('landing-scan-result');
+  
+  if (statusText) statusText.textContent = '🔄 Procesando código QR...';
+  if (statusDot) statusDot.className = 'qr-status-dot scanning';
+  
+  try {
+    let res = { success: false, error: 'Sin conexión' };
+    if (window.eel) {
+      res = await eel.register_attendance_by_qr(qrData)();
+    } else {
+      res = {
+        success: true,
+        profesor: "Docente Simulado",
+        tipo: "entrada",
+        hora: new Date().toLocaleTimeString()
+      };
+    }
+    
+    if (res.success) {
+      // Mostrar alerta de ÉXITO
+      if (statusText) statusText.textContent = '✅ ¡Lectura exitosa!';
+      if (statusDot) statusDot.className = 'qr-status-dot detected';
+      
+      const isEntrada = res.tipo === 'entrada';
+      const actionTitle = isEntrada ? '🟢 ENTRADA REGISTRADA' : '🔵 SALIDA REGISTRADA';
+      const actionColorClass = isEntrada ? 'success' : 'info';
+      
+      resultBox.className = `scan-result-card ${actionColorClass}`;
+      resultBox.innerHTML = `
+        <div class="result-header">
+          <span class="result-icon">${isEntrada ? '📥' : '📤'}</span>
+          <span class="result-title">${actionTitle}</span>
+        </div>
+        <div class="result-body">
+          <span class="result-prof-name">${res.profesor}</span>
+          <span class="result-meta">Hora de registro: <strong>${res.hora}</strong></span>
+        </div>
+      `;
+      resultBox.classList.remove('hidden');
+      
+      // Recargar feed
+      loadRecentFeed();
+    } else {
+      // Mostrar alerta de ERROR
+      if (statusText) statusText.textContent = '❌ Fallo en la lectura';
+      if (statusDot) statusDot.className = 'qr-status-dot error';
+      
+      resultBox.className = 'scan-result-card error';
+      resultBox.innerHTML = `
+        <div class="result-header">
+          <span class="result-icon">⚠️</span>
+          <span class="result-title">ERROR DE LECTURA</span>
+        </div>
+        <div class="result-body">
+          <span class="result-meta">${res.error}</span>
+        </div>
+      `;
+      resultBox.classList.remove('hidden');
+    }
+    
+    // Reproducir un sonido de beep sutil si es posible
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.frequency.setValueAtTime(res.success ? 880 : 440, audioCtx.currentTime); // Beep high for success, low for error
+      gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + (res.success ? 0.15 : 0.3));
+    } catch(e) {}
+    
+  } catch (err) {
+    console.error('Error al procesar asistencia:', err);
+  }
+  
+  // Limpiar temporizadores anteriores si existen
+  if (landingResultTimeout) clearTimeout(landingResultTimeout);
+  
+  // Ocultar la tarjeta de resultado en 5 segundos
+  landingResultTimeout = setTimeout(() => {
+    resultBox.classList.add('hidden');
+  }, 5000);
+  
+  // Reactivar escáner tras 3 segundos
+  setTimeout(() => {
+    const isLandingVisible = document.getElementById('landing-layout') && !document.getElementById('landing-layout').classList.contains('hidden');
+    if (isLandingVisible) {
+      landingQrScanning = true;
+      if (statusText) statusText.textContent = 'Lector activo — Apunta tu código QR';
+      if (statusDot) statusDot.className = 'qr-status-dot scanning';
+      landingQrScanLoop();
+    }
+  }, 3000);
+}
+
+async function loadRecentFeed() {
+  const container = document.getElementById('landing-recent-feed');
+  if (!container) return;
+  
+  try {
+    let history = [];
+    if (window.eel) {
+      history = await eel.get_attendance_history()();
+    } else {
+      history = [
+        { id_asistencia: 1, id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez", fecha_asistencia: "2026-05-29", hora_entrada: "07:05:22", hora_salida: "08:35:40" }
+      ];
+    }
+    
+    // Obtener fecha actual YYYY-MM-DD en zona horaria local
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const localDate = new Date(now.getTime() - (offset*60*1000));
+    const todayStr = localDate.toISOString().split('T')[0];
+    
+    // Filtrar para hoy y ordenar por más reciente
+    const todayLogs = history.filter(log => log.fecha_asistencia === todayStr).slice(0, 5);
+    
+    container.innerHTML = '';
+    if (todayLogs.length === 0) {
+      container.innerHTML = '<div class="feed-empty-state">No se registran asistencias hoy todavía.</div>';
+      return;
+    }
+    
+    todayLogs.forEach(log => {
+      const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
+      const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
+      
+      const item = document.createElement('div');
+      item.className = 'feed-item';
+      
+      const timeDisplay = hasExit 
+        ? `<span class="feed-badge exit">Salida ${log.hora_salida}</span>`
+        : `<span class="feed-badge entry">Entrada ${log.hora_entrada}</span>`;
+      
+      item.innerHTML = `
+        <div class="feed-item-header">
+          <span class="feed-prof-name">${profName}</span>
+          ${timeDisplay}
+        </div>
+      `;
+      container.appendChild(item);
+    });
+  } catch (err) {
+    console.error("Error al cargar feed reciente:", err);
+  }
+}
+
+async function loadAuditTable() {
+  const tbody = document.querySelector('#audit-table tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando historial de asistencias...</td></tr>';
+
+  try {
+    let history = [];
+    if (window.eel) {
+      history = await eel.get_attendance_history()();
+    } else {
+      history = [
+        { id_asistencia: 1, id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez", fecha_asistencia: "2026-05-29", hora_entrada: "07:05:22", hora_salida: "08:35:40" },
+        { id_asistencia: 2, id_profesor: 2, nb_profesor: "Ana", ap_profesor: "Pérez", fecha_asistencia: "2026-05-29", hora_entrada: "08:28:11", hora_salida: "" }
+      ];
+    }
+
+    tbody.innerHTML = '';
+    if (!history || history.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">No hay asistencias registradas en el historial.</td></tr>';
+      return;
+    }
+
+    history.forEach(log => {
+      const tr = document.createElement('tr');
+      const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
+      const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
+      
+      const estadoBadge = hasExit 
+        ? '<span style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #bbf7d0;">Completado</span>'
+        : '<span style="font-weight: 700; color: #ca8a04; background: #fef9c3; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #fef08a;">Activo (En Clase)</span>';
+
+      tr.innerHTML = `
+        <td>${log.id_profesor}</td>
+        <td style="font-weight:600;">${profName}</td>
+        <td>${log.fecha_asistencia}</td>
+        <td style="color:#16a34a; font-weight:600;">${log.hora_entrada}</td>
+        <td style="color:${hasExit ? '#2563eb' : '#64748b'}; font-weight:600;">${hasExit ? log.hora_salida : '—'}</td>
+        <td>${estadoBadge}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error("Error cargando tabla de auditoria:", err);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">Error al conectar con la base de datos.</td></tr>';
+  }
 }

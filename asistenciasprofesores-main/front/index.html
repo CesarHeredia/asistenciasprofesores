@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sistema de Asistencia</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+</head>
+
+<body>
+  <!-- 1. PANTALLA DE INICIO: ESCÁNER QR PARA PROFESORES -->
+  <div id="landing-layout" class="landing-layout">
+    <div class="landing-main-card">
+      
+      <!-- LADO IZQUIERDO: Cámara / Lector -->
+      <div class="landing-scanner-side">
+        <div class="landing-logo-container">
+          <img src="scr/usmlgoretina-1.png" alt="Logo" class="landing-logo" onerror="this.style.display='none'">
+        </div>
+        <h1 class="landing-main-title">REGISTRO DE ASISTENCIA</h1>
+        <p class="landing-subtitle">Muestra tu código QR asignado frente a la cámara para marcar Entrada o Salida</p>
+        
+        <div class="landing-video-wrapper">
+          <video id="landing-qr-video" autoplay playsinline muted></video>
+          <canvas id="landing-qr-canvas" style="display:none;"></canvas>
+          
+          <div class="landing-guide-overlay">
+            <div class="qr-guide-corner tl"></div>
+            <div class="qr-guide-corner tr"></div>
+            <div class="qr-guide-corner bl"></div>
+            <div class="qr-guide-corner br"></div>
+            <div class="landing-scan-line"></div>
+          </div>
+        </div>
+        
+        <div class="landing-status-bar" id="landing-status-bar">
+          <span class="qr-status-dot scanning" id="landing-status-dot"></span>
+          <span id="landing-status-text">Escaneando código QR de profesores...</span>
+        </div>
+      </div>
+      
+      <!-- LADO DERECHO: Resultados y Feed Reciente -->
+      <div class="landing-feed-side">
+        
+        <!-- Alerta Dinámica de Registro de Asistencia -->
+        <div id="landing-scan-result" class="scan-result-card hidden">
+          <!-- Se llena dinámicamente desde app.js -->
+        </div>
+
+        <div class="landing-history-container">
+          <h3 class="landing-feed-title">ASISTENCIAS REGISTRADAS HOY</h3>
+          <div class="landing-feed-list" id="landing-recent-feed">
+            <div class="feed-empty-state">Iniciando sistema de asistencia...</div>
+          </div>
+        </div>
+
+        <button id="btn-go-to-admin" class="landing-admin-btn">
+          <span>🛠️ Iniciar Administrador</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 2. PANTALLA DE LOGIN ADMINISTRADOR -->
+  <div id="login-layout" class="login-layout hidden">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="scr/usmlgoretina-1.png" alt="Logo" class="login-logo" onerror="this.style.display='none'">
+        <h2>Acceso Administrativo</h2>
+        <p>Inicia sesión para gestionar profesores, materias y horarios</p>
+      </div>
+      
+      <form id="admin-login-form" class="login-form">
+        <div class="form-group">
+          <label class="form-label" for="login-username">Usuario</label>
+          <input type="text" id="login-username" class="form-input" placeholder="Ingresa usuario" required autocomplete="username">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="login-password">Contraseña</label>
+          <input type="password" id="login-password" class="form-input" placeholder="Ingresa contraseña" required autocomplete="current-password">
+        </div>
+        
+        <div id="login-error-msg" class="login-error-msg hidden">
+          ❌ Usuario o contraseña incorrectos. Reintenta.
+        </div>
+
+        <button type="submit" class="action-btn login-submit-btn">🔐 Ingresar al Sistema</button>
+      </form>
+      
+      <button id="btn-back-to-scanner" class="login-back-btn">
+        <span>⬅️ Volver al Escáner QR</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 3. PANEL DE ADMINISTRADOR (ORIGINAL APP-CONTAINER MIGRADO) -->
+  <div id="admin-layout" class="app-container hidden">
+    <aside class="left-sidebar">
+
+      <div class="logo-container">
+        <img src="scr/usmlgoretina-1.png" alt="Logo"
+          style="max-width: 100%; height: auto; max-height: 100px; margin: 0 auto; display: block;" onerror="this.style.display='none'">
+      </div>
+
+      <nav class="nav-menu">
+        <!-- Botón 1: Gestionar Profesores -->
+        <button class="menu-btn active" data-view="dashboard">
+          <span class="menu-text">Gestionar<br />profesores</span>
+        </button>
+
+        <!-- Botón 2: Gestionar Materias -->
+        <button class="menu-btn" data-view="database-materias">
+          <span class="menu-text">Gestionar<br />Materias</span>
+        </button>
+        
+        <!-- Botón 3: Auditoría (LOG DE ENTRADAS Y SALIDAS) -->
+        <button class="menu-btn" data-view="auditoria">
+          <span class="menu-text">Auditoría</span>
+        </button>
+        
+        <!-- Botón 4: Cerrar Sesión -->
+        <button class="menu-btn logout-menu-btn" id="btn-admin-logout">
+          <span class="menu-text">Cerrar Sesión</span>
+        </button>
+
+      </nav>
+    </aside>
+
+    <!-- Columna Central: Contenido Dinámico -->
+    <main id="content" class="center-panel"></main>
+
+    <!-- Columna Derecha: Sidebar de Filtros -->
+    <aside class="right-sidebar">
+      <div class="clock-card">
+        <div class="clock-time" id="sidebar-time">00:00:00</div>
+        <div class="clock-date" id="sidebar-date">Cargando fecha...</div>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="BUSCAR" />
+      </div>
+
+      <div class="filter-section">
+        <h3 class="filter-title">FILTRAR POR:</h3>
+
+        <div class="filter-group">
+          <label class="filter-label">Materia</label>
+          <select class="filter-select" id="filter-materia">
+            <option value="">Materia</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Módulo</label>
+          <select class="filter-select" id="filter-edificio">
+            <option value="">Todos los módulos</option>
+            <option value="1">Módulo 1</option>
+            <option value="2">Módulo 2</option>
+            <option value="3">Módulo 3</option>
+            <option value="4">Módulo 4</option>
+            <option value="5">Módulo 5</option>
+            <option value="6">Módulo 6</option>
+            <option value="7">Módulo 7</option>
+            <option value="8">Módulo 8</option>
+            <option value="9">Módulo 9</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="attendance-section">
+        <h3 class="filter-title">Estado de Asistencia:</h3>
+        <select class="filter-select select-margin" id="filter-asistencia-1">
+          <option value="">Todos</option>
+          <option value="Activo">Activo</option>
+          <option value="Ausente">Ausente</option>
+          <option value="Salida temprana">Salida temprana</option>
+          <option value="Completado">Completado</option>
+          <option value="No marcó salida">No marcó salida</option>
+        </select>
+      </div>
+    </aside>
+
+  </div>
+
+  <div id="modals-container"></div>
+
+  <script type="text/javascript" src="/eel.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script type="text/javascript" src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,40 @@
+<section id="view-auditoria" class="content-view">
+  <header class="panel-header flex-header">
+    <div class="title-meta-group">
+      <h1 class="main-title">AUDITORÍA DE ASISTENCIA</h1>
+      <span class="schedule-subtitle">Historial cronológico de registro de entradas y salidas de profesores</span>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <button class="action-btn secondary-btn" id="btn-refresh-audit" onclick="loadAuditTable()">
+        <span>🔄 Recargar Datos</span>
+      </button>
+      <button class="action-btn" id="btn-export-pdf" onclick="exportAuditToPDF()" style="background-color: #dc2626; border-color: #dc2626; color: #ffffff; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);">
+        <span>📄 Exportar a PDF</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="scroll-container">
+    <div class="table-card">
+      <table class="db-table" id="audit-table">
+        <thead>
+          <tr>
+            <th>ID Profesor</th>
+            <th>Profesor</th>
+            <th>Fecha</th>
+            <th>Hora Entrada</th>
+            <th>Hora Salida</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colspan="6" style="text-align: center; padding: 30px; color: var(--text-muted);">
+              Cargando historial de asistencias...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

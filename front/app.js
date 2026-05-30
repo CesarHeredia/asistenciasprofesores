@@ -450,16 +450,52 @@ function renderCards(data) {
     card.className = 'profesor-card';
     
     let detailsHtml = '';
-    if (activeSlot) {
-      // Si está impartiendo clase en tiempo real, mostrar esa materia y aula (1 sola)
+    const isActivo = p.estado_asistencia === 'Activo';
+    
+    if (isActivo) {
+      if (activeSlot) {
+        // Activo y en clase programada en este momento
+        detailsHtml = `
+          <div class="detail-row">
+            <span class="detail-label">Materia:</span>
+            <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.materia}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Aula:</span>
+            <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.aula}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Facultad:</span>
+            <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
+          </div>
+          <div class="detail-row" style="margin-top: 8px;">
+            <span class="detail-label">Estado:</span>
+            <span class="detail-value" style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #bbf7d0;">Activo (En Clase)</span>
+          </div>
+        `;
+      } else {
+        // Activo en la universidad pero sin clase programada en este momento
+        detailsHtml = `
+          <div class="detail-row">
+            <span class="detail-label">Materias:</span>
+            <span class="detail-value" style="font-weight: 500; color: var(--text-dark, #1e293b);">${p.materia || 'Sin Materias'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Facultad:</span>
+            <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
+          </div>
+          <div class="detail-row" style="margin-top: 8px;">
+            <span class="detail-label">Estado:</span>
+            <span class="detail-value" style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #bbf7d0;">Activo</span>
+          </div>
+        `;
+      }
+    } else {
+      // Inactivo / Desconectado
       detailsHtml = `
         <div class="detail-row">
-          <span class="detail-label">Materia:</span>
-          <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.materia}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Aula:</span>
-          <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.aula}</span>
+          <span class="detail-label">Materias:</span>
+          <span class="detail-value" style="color: var(--text-muted, #64748b);">${p.materia || 'Sin Materias'}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Facultad:</span>
@@ -467,19 +503,7 @@ function renderCards(data) {
         </div>
         <div class="detail-row" style="margin-top: 8px;">
           <span class="detail-label">Estado:</span>
-          <span class="detail-value" style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #bbf7d0;">En Clase</span>
-        </div>
-      `;
-    } else {
-      // Si no tiene clase en este momento, no aparece materia ni aula, simplemente "Hora Libre"
-      detailsHtml = `
-        <div class="detail-row">
-          <span class="detail-label">Facultad:</span>
-          <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
-        </div>
-        <div class="detail-row" style="margin-top: 10px;">
-          <span class="detail-label">Estado:</span>
-          <span class="detail-value" style="font-weight: 700; color: #ef4444; background: #fef2f2; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fecaca;">Hora Libre</span>
+          <span class="detail-value" style="font-weight: 700; color: #64748b; background: #f8fafc; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #e2e8f0;">Desconectado</span>
         </div>
       `;
     }
@@ -488,7 +512,7 @@ function renderCards(data) {
       <div class="card-header">
         <div class="avatar-container">${p.avatar || '🧔🏽'}</div>
         <div class="name-container">
-          <span class="label-profesor-title">Profesor Name:</span>
+          <span class="label-profesor-title">Profesor:</span>
           <span class="profesor-name">${p.nombre}</span>
         </div>
       </div>
@@ -567,6 +591,7 @@ function initFilters() {
     const mat = selMateria.value;
     const fac = selFacultad.value;
     const edif = selEdificio.value;
+    const asistVal = selAsist1 ? selAsist1.value : '';
 
     const selectedDepts = Array.from(depts)
       .filter(cb => cb.checked)
@@ -586,6 +611,10 @@ function initFilters() {
         const dummyDept = `departamento ${(p.id_profesor % 4) + 1}`;
         if (!selectedDepts.includes(dummyDept)) return false;
       }
+      if (asistVal) {
+        if (asistVal === 'presente' && p.estado_asistencia !== 'Activo') return false;
+        if (asistVal === 'ausente' && p.estado_asistencia === 'Activo') return false;
+      }
       return true;
     });
 
@@ -597,12 +626,7 @@ function initFilters() {
   if (selFacultad) selFacultad.addEventListener('change', applyFilters);
   if (selEdificio) selEdificio.addEventListener('change', applyFilters);
   depts.forEach(cb => cb.addEventListener('change', applyFilters));
-
-  if (selAsist1) {
-    selAsist1.addEventListener('change', () => {
-      alert("Filtrado por asistencia en tiempo real configurado en simulación.");
-    });
-  }
+  if (selAsist1) selAsist1.addEventListener('change', applyFilters);
 }
 
 // ==========================================================================
@@ -1645,5 +1669,108 @@ async function loadAuditTable() {
   } catch (err) {
     console.error("Error cargando tabla de auditoria:", err);
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">Error al conectar con la base de datos.</td></tr>';
+  }
+}
+
+async function exportAuditToPDF() {
+  try {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) {
+      alert("La biblioteca PDF no se ha cargado correctamente.");
+      return;
+    }
+    
+    // Obtener los datos actuales del historial llamando al backend
+    let history = [];
+    if (window.eel) {
+      history = await eel.get_attendance_history()();
+    } else {
+      history = [
+        { id_asistencia: 1, id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez", fecha_asistencia: "2026-05-29", hora_entrada: "07:05:22", hora_salida: "08:35:40" },
+        { id_asistencia: 2, id_profesor: 2, nb_profesor: "Ana", ap_profesor: "Pérez", fecha_asistencia: "2026-05-29", hora_entrada: "08:28:11", hora_salida: "" }
+      ];
+    }
+    
+    if (!history || history.length === 0) {
+      alert("No hay registros de asistencia para exportar.");
+      return;
+    }
+    
+    const doc = new jsPDF();
+    
+    // Título y encabezado elegante
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(37, 99, 235); // Azul primary
+    doc.text("HISTORIAL DE ASISTENCIA - AUDITORÍA", 14, 20);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139); // Text muted
+    const nowStr = new Date().toLocaleString();
+    doc.text(`Generado el: ${nowStr} | Total registros: ${history.length}`, 14, 27);
+    
+    // Línea separadora
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, 32, 196, 32);
+    
+    // Preparar el cuerpo de la tabla
+    const tableBody = history.map(log => {
+      const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
+      const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
+      const estado = hasExit ? "Completado" : "Activo (En Clase)";
+      return [
+        log.id_profesor,
+        profName,
+        log.fecha_asistencia,
+        log.hora_entrada,
+        hasExit ? log.hora_salida : '—',
+        estado
+      ];
+    });
+    
+    // Generar tabla elegante con autoTable
+    doc.autoTable({
+      startY: 38,
+      head: [['ID Profesor', 'Profesor', 'Fecha', 'Hora Entrada', 'Hora Salida', 'Estado']],
+      body: tableBody,
+      headStyles: {
+        fillColor: [37, 99, 235], // Azul primary
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 10
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252] // Muted background alternado
+      },
+      styles: {
+        font: "helvetica",
+        fontSize: 9,
+        cellPadding: 4
+      },
+      margin: { top: 38, left: 14, right: 14 }
+    });
+    
+    // Guardar el PDF
+    const filename = `auditoria-asistencia-${new Date().toISOString().split('T')[0]}.pdf`;
+    if (window.eel && typeof eel.save_pdf_file === 'function') {
+      const pdfBase64 = doc.output('datauristring');
+      const base64Data = pdfBase64.split(',')[1];
+      
+      const res = await eel.save_pdf_file(base64Data, filename)();
+      if (res && res.success) {
+        if (typeof _showQrToast === 'function') {
+          _showQrToast("Reporte PDF guardado exitosamente en Descargas.", "success");
+        }
+        alert(`📄 ¡PDF Guardado Exitosamente!\n\nSe ha guardado en tu carpeta de Descargas:\n${res.path}`);
+      } else {
+        alert("Error al guardar el PDF en el sistema: " + (res ? res.error : "Error desconocido"));
+      }
+    } else {
+      doc.save(filename);
+    }
+  } catch (err) {
+    console.error("Error al exportar PDF:", err);
+    alert("Hubo un error al generar el archivo PDF.");
   }
 }

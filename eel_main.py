@@ -81,6 +81,11 @@ def get_attendance_history():
     """Devuelve el historial completo de asistencias para auditoria."""
     return backend.get_attendance_history(DB_PATH)
 
+@eel.expose
+def save_pdf_file(base64_data, filename):
+    """Guarda un archivo PDF codificado en base64 en la carpeta de descargas del usuario."""
+    return backend.save_pdf_file(base64_data, filename)
+
 if __name__ == '__main__':
     import socket
     import threading

@@ -4,9 +4,14 @@
       <h1 class="main-title">AUDITORÍA DE ASISTENCIA</h1>
       <span class="schedule-subtitle">Historial cronológico de registro de entradas y salidas de profesores</span>
     </div>
-    <button class="action-btn secondary-btn" id="btn-refresh-audit" onclick="loadAuditTable()">
-      <span>🔄 Recargar Datos</span>
-    </button>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <button class="action-btn secondary-btn" id="btn-refresh-audit" onclick="loadAuditTable()">
+        <span>🔄 Recargar Datos</span>
+      </button>
+      <button class="action-btn" id="btn-export-pdf" onclick="exportAuditToPDF()" style="background-color: #dc2626; border-color: #dc2626; color: #ffffff; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);">
+        <span>📄 Exportar a PDF</span>
+      </button>
+    </div>
   </header>
 
   <div class="scroll-container">

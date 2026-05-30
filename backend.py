@@ -170,8 +170,29 @@ def get_dashboard_data(db_path):
     if not os.path.exists(db_path):
         return []
     try:
+        import datetime
         con = get_db_connection(db_path)
         cur = con.cursor()
+        
+        # Obtener el estado actual de asistencia de hoy para todos los profesores
+        today_str = datetime.date.today().isoformat()
+        cur.execute("""
+            SELECT id_profesor, hora_entrada, hora_salida 
+            FROM asistencias 
+            WHERE fecha_asistencia = ? 
+            ORDER BY id_asistencia ASC
+        """, (today_str,))
+        attendance_rows = cur.fetchall()
+        
+        estado_profesores = {}
+        for r in attendance_rows:
+            pid = r["id_profesor"]
+            h_in = r["hora_entrada"]
+            h_out = r["hora_salida"]
+            if h_in and (h_out is None or h_out == ""):
+                estado_profesores[pid] = "Activo"
+            else:
+                estado_profesores[pid] = "Inactivo"
         
         # JOIN query to load complete teachers and schedule/subject information
         query = """
@@ -267,7 +288,8 @@ def get_dashboard_data(db_path):
                 "facultad": facultad_str,
                 "avatar": avatar,
                 "horario": ", ".join(info["horarios"]) if info["horarios"] else "No programado",
-                "schedule_slots": info["schedule_slots"]
+                "schedule_slots": info["schedule_slots"],
+                "estado_asistencia": estado_profesores.get(id_prof, "Inactivo")
             })
             
         return result
@@ -575,4 +597,40 @@ def get_attendance_history(db_path):
     except Exception as e:
         print("Error obteniendo historial de asistencias:", e)
         return []
+
+def get_downloads_folder():
+    """Retorna la ruta de la carpeta de descargas del usuario de forma multiplataforma."""
+    home = os.path.expanduser("~")
+    # Intentar buscar la carpeta Descargas en español o Downloads en inglés
+    descargas = os.path.join(home, "Descargas")
+    if os.path.exists(descargas):
+        return descargas
+    downloads = os.path.join(home, "Downloads")
+    if os.path.exists(downloads):
+        return downloads
+    return home # Fallback al home
+
+def save_pdf_file(base64_data, filename):
+    """Guarda un archivo PDF codificado en base64 en la carpeta de Descargas del usuario."""
+    import base64
+    try:
+        downloads_dir = get_downloads_folder()
+        filepath = os.path.join(downloads_dir, filename)
+        
+        # Si el archivo ya existe, añadir sufijo incremental para no sobreescribir
+        base, ext = os.path.splitext(filepath)
+        counter = 1
+        while os.path.exists(filepath):
+            filepath = f"{base}_{counter}{ext}"
+            counter += 1
+            
+        file_bytes = base64.b64decode(base64_data)
+        with open(filepath, "wb") as f:
+            f.write(file_bytes)
+            
+        return {"success": True, "path": filepath}
+    except Exception as e:
+        print("Error al guardar PDF desde el backend:", e)
+        return {"success": False, "error": str(e)}
+
 

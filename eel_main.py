@@ -9,7 +9,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.append(ROOT)
 
-import backend
+from backend import backend
 
 try:
     import eel
@@ -18,7 +18,7 @@ except Exception as e:
     raise
 
 WEB = os.path.join(ROOT, 'front')
-DB_PATH = os.path.join(ROOT, 'gestion_academica.db')
+DB_PATH = os.path.join(ROOT, 'backend', 'db', 'gestion_academica.db')
 
 # Inicializar Eel con la carpeta de frontend
 eel.init(WEB)

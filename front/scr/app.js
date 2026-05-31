@@ -24,68 +24,6 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
-/**
- * Calcula el estado de un registro de auditoría.
- * @param {Object} log - Registro de asistencia con hora_entrada, hora_salida, ultimo_fin_horario
- * @returns {{ label: string, style: string }} Etiqueta y estilos CSS inline del badge
- */
-function computeAuditStatus(log) {
-  const hasEntry = log.hora_entrada && log.hora_entrada.trim() !== '';
-  const hasExit  = log.hora_salida  && log.hora_salida.trim()  !== '';
-  const finHorario = log.ultimo_fin_horario ? log.ultimo_fin_horario.trim() : null;
-
-  if (!hasEntry) {
-    // Sin entrada → Ausente
-    return {
-      label: 'Ausente',
-      style: 'font-weight:700;color:#dc2626;background:#fef2f2;padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #fecaca;'
-    };
-  }
-
-  if (!hasExit) {
-    // Verificar si el registro es de hoy y ya pasaron las 17:00
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const currentMin = now.getHours() * 60 + now.getMinutes();
-    const limit17h = 17 * 60; // 17:00 en minutos
-
-    if (log.fecha_asistencia === todayStr && currentMin >= limit17h) {
-      // Ya pasaron las 5:00 PM y no marcó salida
-      return {
-        label: 'No marcó salida',
-        style: 'font-weight:700;color:#7c3aed;background:#f5f3ff;padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #ddd6fe;'
-      };
-    }
-
-    // Aún dentro del horario laboral → Activo
-    return {
-      label: 'Activo',
-      style: 'font-weight:700;color:#ca8a04;background:#fef9c3;padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #fef08a;'
-    };
-  }
-
-  // Tiene salida — comparar con fin del horario del día
-  if (finHorario) {
-    // Convertir hora_salida (HH:MM:SS) a minutos
-    const salidaMin  = timeToMinutes(log.hora_salida.substring(0, 5));  // HH:MM
-    const finMin     = timeToMinutes(finHorario.substring(0, 5));       // HH:MM
-
-    if (salidaMin < finMin) {
-      // Salió antes de que terminaran todas sus clases
-      return {
-        label: 'Salida temprana',
-        style: 'font-weight:700;color:#ea580c;background:#fff7ed;padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #fed7aa;'
-      };
-    }
-  }
-
-  // Salió después (o exactamente al acabar) el horario del día → Completado
-  return {
-    label: 'Completado',
-    style: 'font-weight:700;color:#16a34a;background:#f0fdf4;padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #bbf7d0;'
-  };
-}
-
 function getCurrentStatus(slots) {
   const now = new Date();
   const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -122,6 +60,7 @@ function initClock() {
 const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
 let rawDashboardData = [];
+let auditFullHistory = [];  // Cache del historial completo de auditoría
 let currentView = 'dashboard';
 let currentSelectedProfesor = null;
 let dashboardRefreshInterval = null; // Intervalo de refresco de tarjetas en tiempo real
@@ -147,10 +86,10 @@ const friendlyNames = {
 
 // Mapa de parciales HTML
 const viewPartials = {
-  'dashboard': 'dashboard/dashboard.html',
-  'database-profesores': 'dashboard/profesores.html',
-  'database-materias': 'dashboard/materias.html',
-  'auditoria': 'dashboard/auditoria.html'
+  'dashboard': 'scr/dashboard/dashboard.html',
+  'database-profesores': 'scr/dashboard/profesores.html',
+  'database-materias': 'scr/dashboard/materias.html',
+  'auditoria': 'scr/dashboard/auditoria.html'
 };
 
 // ==========================================================================
@@ -177,7 +116,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initClock();
   initLandingAndLoginEvents();
-  
+
   // Iniciar con el lector QR de profesores en la landing page
   startLandingQrScanner();
 
@@ -216,7 +155,7 @@ function initLandingAndLoginEvents() {
       // Éxito: Entrar a la app de admin
       document.getElementById('login-layout').classList.add('hidden');
       document.getElementById('admin-layout').classList.remove('hidden');
-      
+
       // Iniciar el dashboard admin
       initFilters();
       navigateView('dashboard');
@@ -233,11 +172,11 @@ function initLandingAndLoginEvents() {
       clearInterval(dashboardRefreshInterval);
       dashboardRefreshInterval = null;
     }
-    
+
     // Ocultar layout de administrador, mostrar landing
     document.getElementById('admin-layout').classList.add('hidden');
     document.getElementById('landing-layout').classList.remove('hidden');
-    
+
     // Volver a iniciar el escáner del landing
     startLandingQrScanner();
   });
@@ -245,11 +184,11 @@ function initLandingAndLoginEvents() {
 
 async function loadModals() {
   try {
-    const resp = await fetch('dashboard/modals.html');
+    const resp = await fetch('scr/dashboard/modals.html');
     if (resp.ok) {
       const html = await resp.text();
       document.getElementById('modals-container').innerHTML = html;
-      
+
       // Bindear eventos de modales que antes estaban inline, si fuera necesario.
       // (Los eventos inline onclick= ya funcionan si se insertan con innerHTML)
       document.getElementById('modal-submit-btn').addEventListener('click', handleCrudSubmit);
@@ -267,7 +206,7 @@ function initNavigation() {
       const targetView = btn.getAttribute('data-view');
 
       if (targetView === 'horarios' && !currentSelectedProfesor) {
-        alert("Por favor, selecciona un profesor en 'Gestionar Profesores' y haz clic en su botón '📅 Horario' para configurar su grilla.");
+        alert("Por favor, selecciona un profesor en 'Gestionar Profesores' y haz clic en su botón ' Horario' para configurar su grilla.");
         return;
       }
 
@@ -306,14 +245,32 @@ async function navigateView(viewName) {
 
   // Cargar datos para la vista
   if (viewName === 'dashboard') {
+    // Restaurar sidebar default si veníamos de auditoría
+    const defaultSidebar = document.getElementById('default-sidebar-content');
+    const auditSidebar = document.getElementById('audit-sidebar-content');
+    if (defaultSidebar) defaultSidebar.style.display = 'block';
+    if (auditSidebar) auditSidebar.style.display = 'none';
     loadDashboard();
   } else if (viewName === 'database-profesores') {
+    const defaultSidebar = document.getElementById('default-sidebar-content');
+    const auditSidebar = document.getElementById('audit-sidebar-content');
+    if (defaultSidebar) defaultSidebar.style.display = 'block';
+    if (auditSidebar) auditSidebar.style.display = 'none';
     loadCrudTable('profesor');
   } else if (viewName === 'database-materias') {
+    const defaultSidebar = document.getElementById('default-sidebar-content');
+    const auditSidebar = document.getElementById('audit-sidebar-content');
+    if (defaultSidebar) defaultSidebar.style.display = 'block';
+    if (auditSidebar) auditSidebar.style.display = 'none';
     loadCrudTable('materia');
   } else if (viewName === 'horarios' && currentSelectedProfesor) {
     renderHorarioView();
   } else if (viewName === 'auditoria') {
+    // Mostrar sidebar de auditoría, ocultar el default
+    const defaultSidebar = document.getElementById('default-sidebar-content');
+    const auditSidebar = document.getElementById('audit-sidebar-content');
+    if (defaultSidebar) defaultSidebar.style.display = 'none';
+    if (auditSidebar) auditSidebar.style.display = 'block';
     loadAuditTable();
   }
 }
@@ -407,12 +364,7 @@ async function loadDashboard() {
     if (window.eel) {
       rawDashboardData = await eel.get_dashboard_data()();
     } else {
-      rawDashboardData = [
-        {id_profesor: 1, nombre: "Dr. Carlos Rodríguez", materia: "Algoritmos Avanzados", aula: "101-B", facultad: "Ingeniería", avatar: "🧔🏽", schedule_slots: []},
-        {id_profesor: 2, nombre: "Dra. Ana Pérez", materia: "Introducción a la Física", aula: "205", facultad: "Ciencias Exactas", avatar: "👩🏻", schedule_slots: []},
-        {id_profesor: 3, nombre: "Lic. Sofía Martínez", materia: "Historia del Arte", aula: "310", facultad: "Humanidades", avatar: "👩🏽", schedule_slots: []},
-        {id_profesor: 4, nombre: "Ing. David Chen", materia: "Programación de Sistemas", aula: "G-01", facultad: "Ingeniería", avatar: "👨🏻", schedule_slots: []}
-      ];
+      rawDashboardData = [];
     }
 
     // Actualizar stat cards
@@ -488,18 +440,18 @@ function renderCards(data) {
   }
 
   data.forEach(p => {
+    // Calcular asignación activa en tiempo real
     const now = new Date();
     const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
     const currentDay = dayNames[now.getDay()];
     const currentMin = now.getHours() * 60 + now.getMinutes();
 
-    // Detectar clase activa en este momento
     let activeSlot = null;
     if (p.schedule_slots && p.schedule_slots.length > 0) {
       for (const s of p.schedule_slots) {
         if (s.dia === currentDay) {
           const start = timeToMinutes(s.hora_inicio);
-          const end   = timeToMinutes(s.hora_fin);
+          const end = timeToMinutes(s.hora_fin);
           if (currentMin >= start && currentMin <= end) {
             activeSlot = s;
             break;
@@ -508,103 +460,40 @@ function renderCards(data) {
       }
     }
 
-    // Calcular el último fin de clase del día (para Completado / Salida temprana)
-    let ultimoFinHoy = null;
-    if (p.schedule_slots) {
-      p.schedule_slots.filter(s => s.dia === currentDay).forEach(s => {
-        if (!ultimoFinHoy || timeToMinutes(s.hora_fin) > timeToMinutes(ultimoFinHoy)) {
-          ultimoFinHoy = s.hora_fin;
-        }
-      });
-    }
-
     const card = document.createElement('div');
     card.className = 'profesor-card';
 
     let detailsHtml = '';
-    const isActivo = p.estado_asistencia === 'Activo';
-
-    if (isActivo) {
-      if (activeSlot) {
-        // Activo y en clase: materia + salón
-        detailsHtml = `
-          <div class="detail-row">
-            <span class="detail-label">Materia:</span>
-            <span class="detail-value" style="font-weight:600;color:var(--primary,#2563eb);">${activeSlot.materia}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Salón:</span>
-            <span class="detail-value" style="font-weight:700;color:var(--primary,#2563eb);font-size:15px;">${activeSlot.aula}</span>
-          </div>
-          <div class="detail-row" style="margin-top:8px;">
-            <span class="detail-label">Estado:</span>
-            <span class="detail-value" style="font-weight:700;color:#16a34a;background:#f0fdf4;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #bbf7d0;">Activo (En Clase)</span>
-          </div>
-        `;
-      } else {
-        // Activo pero en hora libre: mostrar campo Materia con "Hora libre"
-        detailsHtml = `
-          <div class="detail-row">
-            <span class="detail-label">Materia:</span>
-            <span class="detail-value" style="color:var(--text-muted,#64748b);font-style:italic;">Hora libre</span>
-          </div>
-          <div class="detail-row" style="margin-top:8px;">
-            <span class="detail-label">Estado:</span>
-            <span class="detail-value" style="font-weight:700;color:#ca8a04;background:#fef9c3;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #fef08a;">Activo — Hora libre</span>
-          </div>
-        `;
-      }
-    } else {
-      // --- Inactivo: calcular estado real ---
-      const horaEntrada = p.hora_entrada_hoy;
-      const horaSalida  = p.hora_salida_hoy;
-
-      // Preparar lista de materias (máx. 3 con ellipsis)
-      const todasMaterias = (p.materia && p.materia !== 'Sin Materia Asignada')
-        ? p.materia.split(', ') : [];
-      const materiasDisplay = todasMaterias.length === 0
-        ? 'Sin materias asignadas'
-        : todasMaterias.length <= 3
-          ? todasMaterias.join(', ')
-          : todasMaterias.slice(0, 3).join(', ') + '...';
-
-      let badgeLabel, badgeStyle;
-
-      if (!horaEntrada) {
-        // Nunca marcó entrada hoy
-        badgeLabel = 'Ausente';
-        badgeStyle = 'font-weight:700;color:#64748b;background:#f8fafc;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #e2e8f0;';
-      } else if (horaSalida) {
-        // Marcó salida — comparar con fin del último bloque del día
-        if (ultimoFinHoy) {
-          const salidaMin = timeToMinutes(horaSalida.substring(0, 5));
-          const finMin    = timeToMinutes(ultimoFinHoy.substring(0, 5));
-          if (salidaMin >= finMin) {
-            badgeLabel = 'Completado';
-            badgeStyle = 'font-weight:700;color:#16a34a;background:#f0fdf4;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #bbf7d0;';
-          } else {
-            badgeLabel = 'Salida temprana';
-            badgeStyle = 'font-weight:700;color:#ea580c;background:#fff7ed;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #fed7aa;';
-          }
-        } else {
-          // Sin horario registrado: simplemente Completado
-          badgeLabel = 'Completado';
-          badgeStyle = 'font-weight:700;color:#16a34a;background:#f0fdf4;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #bbf7d0;';
-        }
-      } else {
-        // Tiene entrada pero no salida y está marcado como Inactivo (raro, fallback)
-        badgeLabel = 'Ausente';
-        badgeStyle = 'font-weight:700;color:#64748b;background:#f8fafc;padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #e2e8f0;';
-      }
-
+    if (activeSlot) {
+      // Si está impartiendo clase en tiempo real, mostrar esa materia y aula (1 sola)
       detailsHtml = `
         <div class="detail-row">
-          <span class="detail-label">Materias:</span>
-          <span class="detail-value" style="color:var(--text-muted,#64748b);">${materiasDisplay}</span>
+          <span class="detail-label">Materia:</span>
+          <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.materia}</span>
         </div>
-        <div class="detail-row" style="margin-top:8px;">
+        <div class="detail-row">
+          <span class="detail-label">Aula:</span>
+          <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.aula}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Facultad:</span>
+          <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
+        </div>
+        <div class="detail-row" style="margin-top: 8px;">
           <span class="detail-label">Estado:</span>
-          <span class="detail-value" style="${badgeStyle}">${badgeLabel}</span>
+          <span class="detail-value" style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #bbf7d0;">En Clase</span>
+        </div>
+      `;
+    } else {
+      // Si no tiene clase en este momento, no aparece materia ni aula, simplemente "Hora Libre"
+      detailsHtml = `
+        <div class="detail-row">
+          <span class="detail-label">Facultad:</span>
+          <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
+        </div>
+        <div class="detail-row" style="margin-top: 10px;">
+          <span class="detail-label">Estado:</span>
+          <span class="detail-value" style="font-weight: 700; color: #ef4444; background: #fef2f2; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fecaca;">Hora Libre</span>
         </div>
       `;
     }
@@ -613,7 +502,7 @@ function renderCards(data) {
       <div class="card-header">
         <div class="avatar-container">${p.avatar || '🧔🏽'}</div>
         <div class="name-container">
-          <span class="label-profesor-title">Profesor:</span>
+          <span class="label-profesor-title">Profesor Name:</span>
           <span class="profesor-name">${p.nombre}</span>
         </div>
       </div>
@@ -625,108 +514,92 @@ function renderCards(data) {
   });
 }
 
-// Rellena dinámicamente el selector de Materia con las materias encontradas en schedule_slots
+// Rellenar dinámicamente selectores del sidebar derecho según los datos leídos
 function populateFilterDropdowns(data) {
   const selMateria = document.getElementById('filter-materia');
-  if (!selMateria) return;
+  const selFacultad = document.getElementById('filter-facultad');
+  const selEdificio = document.getElementById('filter-edificio');
 
   const materias = new Set();
+  const facultades = new Set();
+  const edificios = new Set();
+
   data.forEach(p => {
-    if (p.schedule_slots && p.schedule_slots.length > 0) {
-      p.schedule_slots.forEach(s => {
-        if (s.materia && s.materia !== 'Sin Materia') materias.add(s.materia);
-      });
-    } else if (p.materia && p.materia !== 'Sin Materia Asignada') {
+    if (p.materia && p.materia !== "Sin Materia Asignada") {
       p.materia.split(', ').forEach(m => materias.add(m));
+    }
+    if (p.facultad && p.facultad !== "Sin asignar") facultades.add(p.facultad);
+    if (p.aula && p.aula !== "Sin Aula") {
+      const aulaParts = p.aula.split(', ');
+      aulaParts.forEach(a => {
+        if (a.includes('-')) {
+          edificios.add(a.split('-')[1]);
+        } else {
+          const letterMatch = a.match(/[a-zA-Z]+/);
+          if (letterMatch) edificios.add(letterMatch[0]);
+          else edificios.add(a);
+        }
+      });
     }
   });
 
-  selMateria.innerHTML = '<option value="">Todas las materias</option>';
-  Array.from(materias).sort().forEach(m => {
-    selMateria.innerHTML += `<option value="${m}">${m}</option>`;
-  });
+  if (selMateria) {
+    selMateria.innerHTML = '<option value="">Materia</option>';
+    Array.from(materias).sort().forEach(m => {
+      selMateria.innerHTML += `<option value="${m}">${m}</option>`;
+    });
+  }
+
+  if (selFacultad) {
+    selFacultad.innerHTML = '<option value="">Facultad</option>';
+    Array.from(facultades).sort().forEach(f => {
+      selFacultad.innerHTML += `<option value="${f}">${f}</option>`;
+    });
+  }
+
+  if (selEdificio) {
+    selEdificio.innerHTML = '<option value="">Edificio</option>';
+    Array.from(edificios).sort().forEach(e => {
+      selEdificio.innerHTML += `<option value="${e}">Edificio ${e}</option>`;
+    });
+  }
 }
 
 // Escuchas para filtrado instantáneo en el sidebar derecho
 function initFilters() {
-  const searchInput  = document.getElementById('search-input');
-  const selMateria   = document.getElementById('filter-materia');
-  const selEdificio  = document.getElementById('filter-edificio');
-  const selAsist1    = document.getElementById('filter-asistencia-1');
+  const searchInput = document.getElementById('search-input');
+  const selMateria = document.getElementById('filter-materia');
+  const selFacultad = document.getElementById('filter-facultad');
+  const selEdificio = document.getElementById('filter-edificio');
+  const depts = document.querySelectorAll('input[name="dept"]');
+  const selAsist1 = document.getElementById('filter-asistencia-1');
 
   const applyFilters = () => {
     if (currentView !== 'dashboard') return;
 
-    const text      = searchInput ? searchInput.value.toLowerCase().trim() : '';
-    const mat       = selMateria  ? selMateria.value  : '';
-    const modulo    = selEdificio ? selEdificio.value : ''; // número de módulo ("1".."9")
-    const asistVal  = selAsist1   ? selAsist1.value   : '';
+    const text = searchInput.value.toLowerCase().trim();
+    const mat = selMateria.value;
+    const fac = selFacultad.value;
+    const edif = selEdificio.value;
 
-    const now = new Date();
-    const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-    const currentDay = dayNames[now.getDay()];
-    const currentMin = now.getHours() * 60 + now.getMinutes();
+    const selectedDepts = Array.from(depts)
+      .filter(cb => cb.checked)
+      .map(cb => cb.value.toLowerCase());
 
     const filtered = rawDashboardData.filter(p => {
-      // --- Filtro de texto (nombre, materia, aula) ---
       if (text) {
-        const matchName    = p.nombre.toLowerCase().includes(text);
+        const matchName = p.nombre.toLowerCase().includes(text);
         const matchMateria = (p.materia || '').toLowerCase().includes(text);
-        const matchAula    = (p.aula || '').toLowerCase().includes(text);
+        const matchAula = (p.aula || '').toLowerCase().includes(text);
         if (!matchName && !matchMateria && !matchAula) return false;
       }
-
-      // --- Filtro de Materia: el profesor debe tener esa materia en su horario ---
-      if (mat) {
-        const tieneMateria = p.schedule_slots && p.schedule_slots.some(s => s.materia === mat);
-        if (!tieneMateria) return false;
+      if (mat && !(p.materia || '').includes(mat)) return false;
+      if (fac && p.facultad !== fac) return false;
+      if (edif && !(p.aula || '').includes(edif)) return false;
+      if (selectedDepts.length > 0) {
+        const dummyDept = `departamento ${(p.id_profesor % 4) + 1}`;
+        if (!selectedDepts.includes(dummyDept)) return false;
       }
-
-      // --- Filtro de Módulo: el profesor debe estar dando clase AHORA en ese módulo ---
-      if (modulo) {
-        // Solo incluir profesores que tengan una clase activa en este momento
-        // y cuyo número de salón empiece con el número del módulo seleccionado
-        let enModuloAhora = false;
-        if (p.schedule_slots) {
-          for (const s of p.schedule_slots) {
-            if (s.dia === currentDay) {
-              const start = timeToMinutes(s.hora_inicio);
-              const end   = timeToMinutes(s.hora_fin);
-              if (currentMin >= start && currentMin <= end) {
-                // Verificar si el salón empieza con el número del módulo
-                const aulaStr = String(s.aula || '').trim();
-                if (aulaStr.startsWith(modulo)) {
-                  enModuloAhora = true;
-                  break;
-                }
-              }
-            }
-          }
-        }
-        if (!enModuloAhora) return false;
-      }
-
-      // --- Filtro de Estado de Asistencia ---
-      if (asistVal) {
-        // Calcular el estado real del profesor en el dashboard
-        // (similar a computeAuditStatus pero sobre datos del dashboard)
-        const isActivo = p.estado_asistencia === 'Activo';
-
-        if (asistVal === 'Activo') {
-          // Activo: marcó entrada hoy, sin salida
-          if (!isActivo) return false;
-        } else if (asistVal === 'Ausente') {
-          // Ausente: no marcó entrada hoy
-          if (isActivo) return false;
-        } else if (asistVal === 'Salida temprana' || asistVal === 'Completado' || asistVal === 'No marcó salida') {
-          // Estos estados corresponden a profesores que ya marcaron salida (Inactivo)
-          // La distinción exacta requiere datos del historial, pero en el dashboard
-          // el profesor ya no está "Activo" en ese caso.
-          // Por ahora filtramos: deben ser inactivos
-          if (isActivo) return false;
-        }
-      }
-
       return true;
     });
 
@@ -734,9 +607,16 @@ function initFilters() {
   };
 
   if (searchInput) searchInput.addEventListener('input', applyFilters);
-  if (selMateria)  selMateria.addEventListener('change', applyFilters);
+  if (selMateria) selMateria.addEventListener('change', applyFilters);
+  if (selFacultad) selFacultad.addEventListener('change', applyFilters);
   if (selEdificio) selEdificio.addEventListener('change', applyFilters);
-  if (selAsist1)   selAsist1.addEventListener('change', applyFilters);
+  depts.forEach(cb => cb.addEventListener('change', applyFilters));
+
+  if (selAsist1) {
+    selAsist1.addEventListener('change', () => {
+      alert("Filtrado por asistencia en tiempo real configurado en simulación.");
+    });
+  }
 }
 
 // ==========================================================================
@@ -760,23 +640,7 @@ async function loadCrudTable(tableName) {
     if (window.eel) {
       response = await eel.get_table_data(tableName)();
     } else {
-      if (tableName === 'profesor') {
-        response = {
-          columns: ['id_profesor', 'nb_profesor', 'ap_profesor'],
-          rows: [
-            { id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez" },
-            { id_profesor: 2, nb_profesor: "Ana", ap_profesor: "Pérez" }
-          ]
-        };
-      } else {
-        response = {
-          columns: ['id_materia', 'nb_materia'],
-          rows: [
-            { id_materia: 1, nb_materia: "Algoritmos Avanzados" },
-            { id_materia: 2, nb_materia: "Introducción a la Física" }
-          ]
-        };
-      }
+      response = { columns: [], rows: [] };
     }
 
     activeCrudData = response;
@@ -785,6 +649,7 @@ async function loadCrudTable(tableName) {
     thead.innerHTML = '';
     const headerRow = document.createElement('tr');
     response.columns.forEach(col => {
+      if (col.startsWith('id_')) return; // Ocultar columnas de ID
       const th = document.createElement('th');
       th.textContent = friendlyNames[col] || col.toUpperCase();
       headerRow.appendChild(th);
@@ -805,6 +670,7 @@ async function loadCrudTable(tableName) {
       const tr = document.createElement('tr');
 
       response.columns.forEach(col => {
+        if (col.startsWith('id_')) return; // Ocultar columnas de ID
         const td = document.createElement('td');
         if (col === 'qr_content') {
           // Celda de QR clicable con menú de acción
@@ -813,17 +679,17 @@ async function loadCrudTable(tableName) {
           const rowId = row[idCol];
           const profName = tableName === 'profesor' ? `${row['nb_profesor']} ${row['ap_profesor']}`.trim() : '';
           const tieneQr = val && val.trim() !== '';
-          const accionLabel = tieneQr ? '🔄 Reemplazar QR' : '➕ Agregar QR';
+          const accionLabel = tieneQr ? 'Reemplazar QR' : 'Agregar QR';
 
           td.className = 'qr-cell-td';
           td.innerHTML = tieneQr
             ? `<div class="qr-badge assigned" title="${val}">
-                <span class="qr-badge-icon">&#x2705;</span>
+                <span class="qr-badge-icon"></span>
                 <span class="qr-badge-text">Asignado</span>
                </div>
                <small class="qr-value-preview">${val.length > 35 ? val.slice(0, 35) + '…' : val}</small>`
             : `<div class="qr-badge empty">
-                <span class="qr-badge-icon">📷</span>
+                <span class="qr-badge-icon"></span>
                 <span class="qr-badge-text">Sin QR</span>
                </div>`;
 
@@ -853,7 +719,7 @@ async function loadCrudTable(tableName) {
         const profName = `${row['nb_profesor']} ${row['ap_profesor']}`.trim();
         htmlActions += `
           <button class="table-btn schedule" onclick="viewSchedule(${rowId}, '${profName.replace(/'/g, "\\'")}')">
-            📅 Horario
+            Horario
           </button>
         `;
       }
@@ -1168,7 +1034,7 @@ async function openScheduleAssignmentModal() {
       const response = await eel.get_table_data('materia')();
       materias = response.rows || [];
     } else {
-      materias = [{ id_materia: 1, nb_materia: "Algoritmos Avanzados" }];
+      materias = [];
     }
 
     select.innerHTML = '<option value="">Selecciona una Materia</option>';
@@ -1311,7 +1177,7 @@ async function _qrStartCamera() {
     };
   } catch (err) {
     console.error('Error al acceder a la cámara:', err);
-    if (statusText) statusText.textContent = `❌ No se pudo acceder a la cámara: ${err.message}`;
+    if (statusText) statusText.textContent = `No se pudo acceder a la cámara: ${err.message}`;
     if (statusDot) statusDot.className = 'qr-status-dot error';
   }
 }
@@ -1366,7 +1232,7 @@ function _qrOnDetected(data) {
   if (video) video.pause();
 
   // Actualizar estado
-  if (statusText) statusText.textContent = '✅ Código QR detectado correctamente';
+  if (statusText) statusText.textContent = 'Código QR detectado correctamente';
   if (statusDot) statusDot.className = 'qr-status-dot detected';
   if (scanLine) scanLine.style.animationPlayState = 'paused';
 
@@ -1390,7 +1256,7 @@ function restartQrScan() {
     _qrScanLoop();
     const statusText = document.getElementById('qr-status-text');
     const statusDot = document.getElementById('qr-status-dot');
-    if (statusText) statusText.textContent = 'Cámara activa — Apunta al código QR';
+    if (statusText) statusText.textContent = 'Cámara activa - Apunta al código QR';
     if (statusDot) statusDot.className = 'qr-status-dot scanning';
   } else {
     _qrStartCamera();
@@ -1402,7 +1268,7 @@ async function confirmQrSave() {
   if (!qrDetectedData || !qrCurrentProfesorId) return;
 
   const confirmBtn = document.getElementById('qr-confirm-btn');
-  if (confirmBtn) { confirmBtn.textContent = '⏳ Guardando...'; confirmBtn.disabled = true; }
+  if (confirmBtn) { confirmBtn.textContent = 'Guardando...'; confirmBtn.disabled = true; }
 
   try {
     let res = { success: false };
@@ -1415,15 +1281,15 @@ async function confirmQrSave() {
     if (res.success) {
       closeQrScannerModal();
       loadCrudTable('profesor');
-      _showQrToast(`✅ QR guardado correctamente para ${qrCurrentProfesorNombre}`);
+      _showQrToast(`QR guardado correctamente para ${qrCurrentProfesorNombre}`);
     } else {
       alert('Error al guardar el QR: ' + (res.error || 'Desconocido'));
-      if (confirmBtn) { confirmBtn.textContent = '💾 Guardar QR'; confirmBtn.disabled = false; }
+      if (confirmBtn) { confirmBtn.textContent = 'Guardar QR'; confirmBtn.disabled = false; }
     }
   } catch (err) {
     console.error(err);
     alert('Error de comunicación con el backend.');
-    if (confirmBtn) { confirmBtn.textContent = '💾 Guardar QR'; confirmBtn.disabled = false; }
+    if (confirmBtn) { confirmBtn.textContent = 'Guardar QR'; confirmBtn.disabled = false; }
   }
 }
 
@@ -1458,7 +1324,7 @@ function _qrResetUI() {
 
   if (resultBox) resultBox.classList.add('hidden');
   if (rescanBtn) rescanBtn.classList.add('hidden');
-  if (confirmBtn) { confirmBtn.classList.add('hidden'); confirmBtn.textContent = '💾 Guardar QR'; confirmBtn.disabled = false; }
+  if (confirmBtn) { confirmBtn.classList.add('hidden'); confirmBtn.textContent = 'Guardar QR'; confirmBtn.disabled = false; }
   if (statusText) statusText.textContent = 'Iniciando cámara... Apunta al código QR';
   if (statusDot) statusDot.className = 'qr-status-dot scanning';
   if (scanLine) scanLine.style.animationPlayState = 'running';
@@ -1494,11 +1360,11 @@ let landingResultTimeout = null;
 async function startLandingQrScanner() {
   landingQrScanning = false;
   _stopLandingQrStream();
-  
+
   const video = document.getElementById('landing-qr-video');
   const statusText = document.getElementById('landing-status-text');
   const statusDot = document.getElementById('landing-status-dot');
-  
+
   if (!video) return;
 
   // Cargar feed de asistencia en la landing
@@ -1512,10 +1378,10 @@ async function startLandingQrScanner() {
         height: { ideal: 480 }
       }
     };
-    
+
     landingQrStream = await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject = landingQrStream;
-    
+
     video.onloadedmetadata = () => {
       video.play();
       if (statusText) statusText.textContent = 'Lector activo — Apunta tu código QR';
@@ -1550,34 +1416,34 @@ function _stopLandingQrStream() {
 
 function landingQrScanLoop() {
   if (!landingQrScanning) return;
-  
+
   const video = document.getElementById('landing-qr-video');
   const canvas = document.getElementById('landing-qr-canvas');
-  
+
   if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
     landingQrAnimFrame = requestAnimationFrame(landingQrScanLoop);
     return;
   }
-  
+
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  
+
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  
+
   if (typeof jsQR !== 'undefined') {
     const code = jsQR(imageData.data, imageData.width, imageData.height, {
       inversionAttempts: 'dontInvert'
     });
-    
+
     if (code && code.data) {
       landingQrScanning = false;
       handleLandingQrResult(code.data);
       return;
     }
   }
-  
+
   landingQrAnimFrame = requestAnimationFrame(landingQrScanLoop);
 }
 
@@ -1585,32 +1451,27 @@ async function handleLandingQrResult(qrData) {
   const statusText = document.getElementById('landing-status-text');
   const statusDot = document.getElementById('landing-status-dot');
   const resultBox = document.getElementById('landing-scan-result');
-  
-  if (statusText) statusText.textContent = '🔄 Procesando código QR...';
+
+  if (statusText) statusText.textContent = 'Procesando código QR...';
   if (statusDot) statusDot.className = 'qr-status-dot scanning';
-  
+
   try {
     let res = { success: false, error: 'Sin conexión' };
     if (window.eel) {
       res = await eel.register_attendance_by_qr(qrData)();
     } else {
-      res = {
-        success: true,
-        profesor: "Docente Simulado",
-        tipo: "entrada",
-        hora: new Date().toLocaleTimeString()
-      };
+      res = { success: false, error: "Servidor desconectado" };
     }
-    
+
     if (res.success) {
       // Mostrar alerta de ÉXITO
       if (statusText) statusText.textContent = '✅ ¡Lectura exitosa!';
       if (statusDot) statusDot.className = 'qr-status-dot detected';
-      
+
       const isEntrada = res.tipo === 'entrada';
       const actionTitle = isEntrada ? '🟢 ENTRADA REGISTRADA' : '🔵 SALIDA REGISTRADA';
       const actionColorClass = isEntrada ? 'success' : 'info';
-      
+
       resultBox.className = `scan-result-card ${actionColorClass}`;
       resultBox.innerHTML = `
         <div class="result-header">
@@ -1623,14 +1484,14 @@ async function handleLandingQrResult(qrData) {
         </div>
       `;
       resultBox.classList.remove('hidden');
-      
+
       // Recargar feed
       loadRecentFeed();
     } else {
       // Mostrar alerta de ERROR
-      if (statusText) statusText.textContent = '❌ Fallo en la lectura';
+      if (statusText) statusText.textContent = 'Fallo en la lectura';
       if (statusDot) statusDot.className = 'qr-status-dot error';
-      
+
       resultBox.className = 'scan-result-card error';
       resultBox.innerHTML = `
         <div class="result-header">
@@ -1643,7 +1504,7 @@ async function handleLandingQrResult(qrData) {
       `;
       resultBox.classList.remove('hidden');
     }
-    
+
     // Reproducir un sonido de beep sutil si es posible
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1655,20 +1516,20 @@ async function handleLandingQrResult(qrData) {
       gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
       oscillator.start();
       oscillator.stop(audioCtx.currentTime + (res.success ? 0.15 : 0.3));
-    } catch(e) {}
-    
+    } catch (e) { }
+
   } catch (err) {
     console.error('Error al procesar asistencia:', err);
   }
-  
+
   // Limpiar temporizadores anteriores si existen
   if (landingResultTimeout) clearTimeout(landingResultTimeout);
-  
+
   // Ocultar la tarjeta de resultado en 5 segundos
   landingResultTimeout = setTimeout(() => {
     resultBox.classList.add('hidden');
   }, 5000);
-  
+
   // Reactivar escáner tras 3 segundos
   setTimeout(() => {
     const isLandingVisible = document.getElementById('landing-layout') && !document.getElementById('landing-layout').classList.contains('hidden');
@@ -1684,43 +1545,41 @@ async function handleLandingQrResult(qrData) {
 async function loadRecentFeed() {
   const container = document.getElementById('landing-recent-feed');
   if (!container) return;
-  
+
   try {
     let history = [];
     if (window.eel) {
       history = await eel.get_attendance_history()();
     } else {
-      history = [
-        { id_asistencia: 1, id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez", fecha_asistencia: "2026-05-29", hora_entrada: "07:05:22", hora_salida: "08:35:40" }
-      ];
+      history = [];
     }
-    
+
     // Obtener fecha actual YYYY-MM-DD en zona horaria local
     const now = new Date();
     const offset = now.getTimezoneOffset();
-    const localDate = new Date(now.getTime() - (offset*60*1000));
+    const localDate = new Date(now.getTime() - (offset * 60 * 1000));
     const todayStr = localDate.toISOString().split('T')[0];
-    
+
     // Filtrar para hoy y ordenar por más reciente
     const todayLogs = history.filter(log => log.fecha_asistencia === todayStr).slice(0, 5);
-    
+
     container.innerHTML = '';
     if (todayLogs.length === 0) {
       container.innerHTML = '<div class="feed-empty-state">No se registran asistencias hoy todavía.</div>';
       return;
     }
-    
+
     todayLogs.forEach(log => {
       const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
       const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
-      
+
       const item = document.createElement('div');
       item.className = 'feed-item';
-      
-      const timeDisplay = hasExit 
+
+      const timeDisplay = hasExit
         ? `<span class="feed-badge exit">Salida ${log.hora_salida}</span>`
         : `<span class="feed-badge entry">Entrada ${log.hora_entrada}</span>`;
-      
+
       item.innerHTML = `
         <div class="feed-item-header">
           <span class="feed-prof-name">${profName}</span>
@@ -1738,48 +1597,82 @@ async function loadAuditTable() {
   const tbody = document.querySelector('#audit-table tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando historial de asistencias...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando historial de asistencias...</td></tr>';
 
   try {
     let history = [];
     if (window.eel) {
       history = await eel.get_attendance_history()();
     } else {
-      history = [
-        { id_asistencia: 1, id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez", fecha_asistencia: "2026-05-29", hora_entrada: "07:05:22", hora_salida: "08:35:40" },
-        { id_asistencia: 2, id_profesor: 2, nb_profesor: "Ana", ap_profesor: "Pérez", fecha_asistencia: "2026-05-29", hora_entrada: "08:28:11", hora_salida: "" }
-      ];
+      history = [];
     }
 
-    tbody.innerHTML = '';
-    if (!history || history.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">No hay asistencias registradas en el historial.</td></tr>';
-      return;
-    }
-
-    history.forEach(log => {
-      const tr = document.createElement('tr');
-      const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
-      const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
-      const hasEntry = log.hora_entrada && log.hora_entrada.trim() !== '';
-
-      const status = computeAuditStatus(log);
-      const estadoBadge = `<span style="${status.style}">${status.label}</span>`;
-
-      tr.innerHTML = `
-        <td>${log.id_profesor}</td>
-        <td style="font-weight:600;">${profName}</td>
-        <td>${log.fecha_asistencia}</td>
-        <td style="color:${hasEntry ? '#16a34a' : '#64748b'}; font-weight:600;">${hasEntry ? log.hora_entrada : '—'}</td>
-        <td style="color:${hasExit ? '#2563eb' : '#64748b'}; font-weight:600;">${hasExit ? log.hora_salida : '—'}</td>
-        <td>${estadoBadge}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+    auditFullHistory = history || [];  // Guardar copia completa para filtros
+    renderAuditRows(auditFullHistory);
   } catch (err) {
     console.error("Error cargando tabla de auditoria:", err);
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #ef4444;">Error al conectar con la base de datos.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #ef4444;">Error al conectar con la base de datos.</td></tr>';
   }
+}
+
+function renderAuditRows(history) {
+  const tbody = document.querySelector('#audit-table tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  if (!history || history.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">No hay asistencias que coincidan con el filtro.</td></tr>';
+    return;
+  }
+
+  history.forEach(log => {
+    const tr = document.createElement('tr');
+    const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
+    const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
+
+    const estadoBadge = hasExit
+      ? '<span style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #bbf7d0;">Completado</span>'
+      : '<span style="font-weight: 700; color: #ca8a04; background: #fef9c3; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #fef08a;">Activo (En Clase)</span>';
+
+    tr.innerHTML = `
+      <td style="font-weight:600;">${profName}</td>
+      <td>${log.fecha_asistencia}</td>
+      <td style="color:#16a34a; font-weight:600;">${log.hora_entrada}</td>
+      <td style="color:${hasExit ? '#2563eb' : '#64748b'}; font-weight:600;">${hasExit ? log.hora_salida : '—'}</td>
+      <td>${estadoBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function applyAuditDateFilter() {
+  const dateInput = document.getElementById('audit-filter-date');
+  const profesorInput = document.getElementById('audit-filter-profesor');
+  const selectedDate = dateInput ? dateInput.value : '';
+  const searchProfesor = profesorInput ? profesorInput.value.trim().toLowerCase() : '';
+
+  let filtered = [...auditFullHistory];
+
+  if (selectedDate) {
+    filtered = filtered.filter(log => log.fecha_asistencia === selectedDate);
+  }
+
+  if (searchProfesor) {
+    filtered = filtered.filter(log => {
+      const fullName = `${log.nb_profesor} ${log.ap_profesor}`.toLowerCase();
+      return fullName.includes(searchProfesor);
+    });
+  }
+
+  renderAuditRows(filtered);
+}
+
+function clearAuditDateFilter() {
+  const dateInput = document.getElementById('audit-filter-date');
+  const profesorInput = document.getElementById('audit-filter-profesor');
+  if (dateInput) dateInput.value = '';
+  if (profesorInput) profesorInput.value = '';
+  renderAuditRows(auditFullHistory);
 }
 
 async function exportAuditToPDF() {
@@ -1789,91 +1682,70 @@ async function exportAuditToPDF() {
       alert("La biblioteca PDF no se ha cargado correctamente.");
       return;
     }
-    
-    // Obtener los datos actuales del historial llamando al backend
+
     let history = [];
     if (window.eel) {
       history = await eel.get_attendance_history()();
     } else {
-      history = [
-        { id_asistencia: 1, id_profesor: 1, nb_profesor: "Carlos", ap_profesor: "Rodríguez", fecha_asistencia: "2026-05-29", hora_entrada: "07:05:22", hora_salida: "08:35:40" },
-        { id_asistencia: 2, id_profesor: 2, nb_profesor: "Ana", ap_profesor: "Pérez", fecha_asistencia: "2026-05-29", hora_entrada: "08:28:11", hora_salida: "" }
-      ];
+      history = [];
     }
-    
+
     if (!history || history.length === 0) {
       alert("No hay registros de asistencia para exportar.");
       return;
     }
-    
+
     const doc = new jsPDF();
-    
-    // Título y encabezado elegante
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
-    doc.setTextColor(37, 99, 235); // Azul primary
+    doc.setTextColor(37, 99, 235);
     doc.text("HISTORIAL DE ASISTENCIA - AUDITORÍA", 14, 20);
-    
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(100, 116, 139); // Text muted
+    doc.setTextColor(100, 116, 139);
     const nowStr = new Date().toLocaleString();
     doc.text(`Generado el: ${nowStr} | Total registros: ${history.length}`, 14, 27);
-    
-    // Línea separadora
+
     doc.setDrawColor(226, 232, 240);
     doc.line(14, 32, 196, 32);
-    
-    // Preparar el cuerpo de la tabla
+
     const tableBody = history.map(log => {
       const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
-      const hasExit  = log.hora_salida  && log.hora_salida.trim()  !== '';
+      const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
       const hasEntry = log.hora_entrada && log.hora_entrada.trim() !== '';
-      const status   = computeAuditStatus(log);
+      const statusLabel = hasExit ? "Completado" : "Activo (En Clase)";
       return [
-        log.id_profesor,
         profName,
         log.fecha_asistencia,
         hasEntry ? log.hora_entrada : '—',
-        hasExit  ? log.hora_salida  : '—',
-        status.label
+        hasExit ? log.hora_salida : '—',
+        statusLabel
       ];
     });
-    
-    // Generar tabla elegante con autoTable
+
     doc.autoTable({
       startY: 38,
-      head: [['ID Profesor', 'Profesor', 'Fecha', 'Hora Entrada', 'Hora Salida', 'Estado']],
+      head: [['Profesor', 'Fecha', 'Hora Entrada', 'Hora Salida', 'Estado']],
       body: tableBody,
-      headStyles: {
-        fillColor: [37, 99, 235], // Azul primary
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 10
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252] // Muted background alternado
-      },
-      styles: {
-        font: "helvetica",
-        fontSize: 9,
-        cellPadding: 4
-      },
+      headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      styles: { font: "helvetica", fontSize: 9, cellPadding: 4 },
       margin: { top: 38, left: 14, right: 14 }
     });
-    
-    // Guardar el PDF
+
     const filename = `auditoria-asistencia-${new Date().toISOString().split('T')[0]}.pdf`;
     if (window.eel && typeof eel.save_pdf_file === 'function') {
       const pdfBase64 = doc.output('datauristring');
       const base64Data = pdfBase64.split(',')[1];
-      
+
       const res = await eel.save_pdf_file(base64Data, filename)();
       if (res && res.success) {
         if (typeof _showQrToast === 'function') {
           _showQrToast("Reporte PDF guardado exitosamente en Descargas.", "success");
         }
-        alert(`📄 ¡PDF Guardado Exitosamente!\n\nSe ha guardado en tu carpeta de Descargas:\n${res.path}`);
+        alert(`PDF Guardado Exitosamente!\\n\\nSe ha guardado en tu carpeta de Descargas:\\n${res.path}`);
       } else {
         alert("Error al guardar el PDF en el sistema: " + (res ? res.error : "Error desconocido"));
       }

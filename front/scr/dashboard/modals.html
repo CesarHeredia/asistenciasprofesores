@@ -2,18 +2,21 @@
 <!-- MODAL: Formularios Dinámicos de Registro (Añadir/Editar) -->
 <div class="modal-overlay hidden" id="crud-modal">
   <div class="modal-card">
+
     <header class="modal-header">
       <h2 class="modal-title" id="modal-title">Añadir Registro</h2>
       <button class="close-btn" onclick="closeCrudModal()">&times;</button>
     </header>
+
     <div class="modal-body">
       <form id="crud-form">
         <!-- Campos dinámicos renderizados desde app.js -->
       </form>
     </div>
+
     <footer class="modal-footer">
-      <button class="modal-btn secondary-btn" onclick="closeCrudModal()">❌ Cancelar</button>
-      <button class="modal-btn" id="modal-submit-btn">💾 Guardar</button>
+      <button class="modal-btn secondary-btn" onclick="closeCrudModal()">Cancelar</button>
+      <button class="modal-btn" id="modal-submit-btn">Guardar</button>
     </footer>
   </div>
 </div>
@@ -43,8 +46,8 @@
       </form>
     </div>
     <footer class="modal-footer">
-      <button class="modal-btn secondary-btn" onclick="closeScheduleModal()">❌ Cancelar</button>
-      <button class="modal-btn" id="schedule-submit-btn">💾 Guardar</button>
+      <button class="modal-btn secondary-btn" onclick="closeScheduleModal()">Cancelar</button>
+      <button class="modal-btn" id="schedule-submit-btn">Guardar</button>
     </footer>
   </div>
 </div>
@@ -81,13 +84,13 @@
       <!-- Estado del escáner -->
       <div class="qr-status-bar" id="qr-status-bar">
         <span class="qr-status-dot scanning" id="qr-status-dot"></span>
-        <span id="qr-status-text">Iniciando cámara... Apunta al código QR</span>
+        <span id="qr-status-text">Iniciando cámara... Apunta al codigo QR</span>
       </div>
 
       <!-- Panel de resultado (oculto hasta detectar) -->
       <div class="qr-result-box hidden" id="qr-result-box">
         <div class="qr-result-header">
-          <span>✅ ¡Código QR detectado!</span>
+          <span>¡Codigo QR detectado!</span>
         </div>
         <div class="qr-result-content">
           <label class="form-label" style="margin-bottom:6px;">Contenido extraído:</label>
@@ -97,9 +100,11 @@
     </div>
 
     <footer class="modal-footer">
-      <button class="modal-btn secondary-btn" onclick="closeQrScannerModal()">❌ Cancelar</button>
-      <button class="modal-btn qr-rescan-btn hidden" id="qr-rescan-btn" onclick="restartQrScan()">🔄 Volver a Escanear</button>
-      <button class="modal-btn qr-confirm-btn hidden" id="qr-confirm-btn" onclick="confirmQrSave()">💾 Guardar QR</button>
+      <button class="modal-btn secondary-btn" onclick="closeQrScannerModal()">Cancelar</button>
+      <button class="modal-btn qr-rescan-btn hidden" id="qr-rescan-btn" onclick="restartQrScan()">Volver a
+        Escanear</button>
+      <button class="modal-btn qr-confirm-btn hidden" id="qr-confirm-btn" onclick="confirmQrSave()">Guardar
+        QR</button>
     </footer>
   </div>
 </div>

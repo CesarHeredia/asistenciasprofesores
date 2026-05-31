@@ -1,6 +1,0 @@
-PyQt6
-pyinstaller
-eel
-pywebview
-qtpy
-PyQt6-WebEngine

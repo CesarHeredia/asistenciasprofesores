@@ -1,0 +1,22 @@
+<!-- dashboard.html -->
+<section id="view-dashboard" class="content-view">
+  <header class="panel-header flex-header">
+    <h1 class="main-title">SISTEMA DE ASISTENCIA - PANEL DE CONTROL</h1>
+    <div class="header-actions">
+      <button class="action-btn" id="btn-refresh-dashboard" onclick="loadDashboard()" style="margin-right: 10px;">
+        <span>Actualizar</span>
+      </button>
+      <button class="action-btn secondary-btn" id="toggle-prof-view-btn" data-action="toggle-view">
+        <span>Ver Docentes</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Contenedor con Scroll para Tarjetas -->
+  <div class="scroll-container">
+    <div class="cards-grid" id="profesores-list">
+      <div class="loading-state">Cargando panel de control...</div>
+    </div>
+  </div>
+
+</section>

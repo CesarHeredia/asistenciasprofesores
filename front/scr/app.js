@@ -33,12 +33,93 @@ function getCurrentStatus(slots) {
     if (s.dia === currentDay) {
       const start = timeToMinutes(s.hora_inicio);
       const end = timeToMinutes(s.hora_fin);
-      if (currentMin >= start && currentMin <= end) {
+      if (currentMin >= start && currentMin < end) {
         return `${s.materia} en ${s.aula}`;
       }
     }
   }
   return "Hora libre";
+}
+
+function getProfessorStatus(horaEntrada, horaSalida, scheduleSlots, evalDate = new Date(), evalTimeStr = null) {
+  if (!horaEntrada || horaEntrada.trim() === '') {
+    return {
+      code: "Ausente",
+      label: "Ausente",
+      colorClass: "gray",
+      style: 'font-weight: 700; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #cbd5e1;'
+    };
+  }
+
+  const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const currentDay = dayNames[evalDate.getDay()];
+  const todaySlots = (scheduleSlots || []).filter(s => s.dia === currentDay);
+
+  let lastClassEndMin = 0;
+  let inClass = false;
+  
+  let currentMin = evalDate.getHours() * 60 + evalDate.getMinutes();
+  if (evalTimeStr) {
+    const [h, m] = evalTimeStr.split(':').map(Number);
+    currentMin = h * 60 + m;
+  }
+
+  todaySlots.forEach(s => {
+    const start = timeToMinutes(s.hora_inicio);
+    const end = timeToMinutes(s.hora_fin);
+    if (end > lastClassEndMin) {
+      lastClassEndMin = end;
+    }
+    if (currentMin >= start && currentMin < end) {
+      inClass = true;
+    }
+  });
+
+  const hasExit = horaSalida && horaSalida.trim() !== '';
+
+  if (!hasExit) {
+    if (todaySlots.length > 0 && currentMin > lastClassEndMin) {
+      return {
+        code: "SinMarcarSalida",
+        label: "Sin Marcar Salida",
+        colorClass: "red",
+        style: 'font-weight: 700; color: #dc2626; background: #fef2f2; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fecaca;'
+      };
+    } else {
+      if (inClass) {
+        return {
+          code: "ActivoEnClase",
+          label: "Activo - En clase",
+          colorClass: "yellow",
+          style: 'font-weight: 700; color: #ca8a04; background: #fef9c3; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fef08a;'
+        };
+      } else {
+        return {
+          code: "ActivoHoraLibre",
+          label: "Activo - Hora Libre",
+          colorClass: "yellow",
+          style: 'font-weight: 700; color: #ca8a04; background: #fef9c3; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fef08a;'
+        };
+      }
+    }
+  } else {
+    const exitMin = timeToMinutes(horaSalida);
+    if (todaySlots.length > 0 && exitMin < lastClassEndMin) {
+      return {
+        code: "SalidaTemprana",
+        label: "Salida Temprana",
+        colorClass: "red",
+        style: 'font-weight: 700; color: #dc2626; background: #fef2f2; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fecaca;'
+      };
+    } else {
+      return {
+        code: "Completado",
+        label: "Completado",
+        colorClass: "green",
+        style: 'font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #bbf7d0;'
+      };
+    }
+  }
 }
 
 function initClock() {
@@ -79,9 +160,11 @@ const friendlyNames = {
   "ap_profesor": "Apellidos",
   "nb_materia": "Nombre de la Materia",
   "qr_content": "Código QR",
-  "facultad": "Facultad",
   "departamento": "Departamento",
-  "edificio": "Edificio"
+  "edificio": "Edificio",
+  "telefono_personal": "Teléfono Personal",
+  "telefono_emergencia": "Teléfono de Emergencia",
+  "cedula": "Cédula"
 };
 
 // Mapa de parciales HTML
@@ -452,7 +535,7 @@ function renderCards(data) {
         if (s.dia === currentDay) {
           const start = timeToMinutes(s.hora_inicio);
           const end = timeToMinutes(s.hora_fin);
-          if (currentMin >= start && currentMin <= end) {
+          if (currentMin >= start && currentMin < end) {
             activeSlot = s;
             break;
           }
@@ -463,9 +546,10 @@ function renderCards(data) {
     const card = document.createElement('div');
     card.className = 'profesor-card';
 
+    const statusInfo = getProfessorStatus(p.hora_entrada, p.hora_salida, p.schedule_slots, now);
+
     let detailsHtml = '';
-    if (activeSlot) {
-      // Si está impartiendo clase en tiempo real, mostrar esa materia y aula (1 sola)
+    if (statusInfo.code === "ActivoEnClase" && activeSlot) {
       detailsHtml = `
         <div class="detail-row">
           <span class="detail-label">Materia:</span>
@@ -475,25 +559,16 @@ function renderCards(data) {
           <span class="detail-label">Aula:</span>
           <span class="detail-value" style="font-weight: 600; color: var(--primary, #2563eb);">${activeSlot.aula}</span>
         </div>
-        <div class="detail-row">
-          <span class="detail-label">Facultad:</span>
-          <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
-        </div>
         <div class="detail-row" style="margin-top: 8px;">
           <span class="detail-label">Estado:</span>
-          <span class="detail-value" style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #bbf7d0;">En Clase</span>
+          <span class="detail-value" style="${statusInfo.style}">${statusInfo.label}</span>
         </div>
       `;
     } else {
-      // Si no tiene clase en este momento, no aparece materia ni aula, simplemente "Hora Libre"
       detailsHtml = `
-        <div class="detail-row">
-          <span class="detail-label">Facultad:</span>
-          <span class="detail-value">${p.facultad || 'Sin asignar'}</span>
-        </div>
         <div class="detail-row" style="margin-top: 10px;">
           <span class="detail-label">Estado:</span>
-          <span class="detail-value" style="font-weight: 700; color: #ef4444; background: #fef2f2; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #fecaca;">Hora Libre</span>
+          <span class="detail-value" style="${statusInfo.style}">${statusInfo.label}</span>
         </div>
       `;
     }
@@ -515,62 +590,69 @@ function renderCards(data) {
 }
 
 // Rellenar dinámicamente selectores del sidebar derecho según los datos leídos
+
+function setupAutocomplete(inputId, listId, dataArray, onSelectCallback) {
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+  if (!input || !list) return;
+
+  const renderList = (filterText) => {
+    list.innerHTML = '';
+    const text = (filterText || '').toLowerCase().trim();
+    let matches = dataArray.filter(item => item.toLowerCase().includes(text));
+    
+    if (matches.length === 0) {
+      list.classList.add('hidden');
+      return;
+    }
+
+    matches.forEach(match => {
+      const div = document.createElement('div');
+      div.textContent = match;
+      div.onclick = (e) => {
+        input.value = match;
+        list.classList.add('hidden');
+        if (onSelectCallback) onSelectCallback(match);
+      };
+      list.appendChild(div);
+    });
+    list.classList.remove('hidden');
+  };
+
+  input.addEventListener('input', () => renderList(input.value));
+  input.addEventListener('focus', () => renderList(input.value));
+
+  document.addEventListener('click', (e) => {
+    if (e.target !== input && !list.contains(e.target)) {
+      list.classList.add('hidden');
+    }
+  });
+}
+
 function populateFilterDropdowns(data) {
-  const selMateria = document.getElementById('filter-materia');
-  const selFacultad = document.getElementById('filter-facultad');
-  const selEdificio = document.getElementById('filter-edificio');
+  const inputMateria = document.getElementById('filter-materia');
 
   const materias = new Set();
-  const facultades = new Set();
-  const edificios = new Set();
 
   data.forEach(p => {
     if (p.materia && p.materia !== "Sin Materia Asignada") {
       p.materia.split(', ').forEach(m => materias.add(m));
     }
-    if (p.facultad && p.facultad !== "Sin asignar") facultades.add(p.facultad);
-    if (p.aula && p.aula !== "Sin Aula") {
-      const aulaParts = p.aula.split(', ');
-      aulaParts.forEach(a => {
-        if (a.includes('-')) {
-          edificios.add(a.split('-')[1]);
-        } else {
-          const letterMatch = a.match(/[a-zA-Z]+/);
-          if (letterMatch) edificios.add(letterMatch[0]);
-          else edificios.add(a);
-        }
-      });
-    }
   });
 
-  if (selMateria) {
-    selMateria.innerHTML = '<option value="">Materia</option>';
-    Array.from(materias).sort().forEach(m => {
-      selMateria.innerHTML += `<option value="${m}">${m}</option>`;
-    });
-  }
-
-  if (selFacultad) {
-    selFacultad.innerHTML = '<option value="">Facultad</option>';
-    Array.from(facultades).sort().forEach(f => {
-      selFacultad.innerHTML += `<option value="${f}">${f}</option>`;
-    });
-  }
-
-  if (selEdificio) {
-    selEdificio.innerHTML = '<option value="">Edificio</option>';
-    Array.from(edificios).sort().forEach(e => {
-      selEdificio.innerHTML += `<option value="${e}">Edificio ${e}</option>`;
-    });
-  }
+  const materiasArray = Array.from(materias).sort();
+  setupAutocomplete('filter-materia', 'autocomplete-list-filter', materiasArray, () => {
+    // Disparar evento input para que el listener de initFilters lo atrape
+    if (inputMateria) inputMateria.dispatchEvent(new Event('input'));
+  });
 }
 
 // Escuchas para filtrado instantáneo en el sidebar derecho
 function initFilters() {
   const searchInput = document.getElementById('search-input');
-  const selMateria = document.getElementById('filter-materia');
-  const selFacultad = document.getElementById('filter-facultad');
+  const inputMateria = document.getElementById('filter-materia');
   const selEdificio = document.getElementById('filter-edificio');
+  const inputAula = document.getElementById('filter-aula');
   const depts = document.querySelectorAll('input[name="dept"]');
   const selAsist1 = document.getElementById('filter-asistencia-1');
 
@@ -578,9 +660,10 @@ function initFilters() {
     if (currentView !== 'dashboard') return;
 
     const text = searchInput.value.toLowerCase().trim();
-    const mat = selMateria.value;
-    const fac = selFacultad.value;
+    const mat = inputMateria ? inputMateria.value.toLowerCase().trim() : '';
     const edif = selEdificio.value;
+    const aulaSearch = inputAula ? inputAula.value.trim() : '';
+    const asist = selAsist1 ? selAsist1.value : '';
 
     const selectedDepts = Array.from(depts)
       .filter(cb => cb.checked)
@@ -593,13 +676,35 @@ function initFilters() {
         const matchAula = (p.aula || '').toLowerCase().includes(text);
         if (!matchName && !matchMateria && !matchAula) return false;
       }
-      if (mat && !(p.materia || '').includes(mat)) return false;
-      if (fac && p.facultad !== fac) return false;
-      if (edif && !(p.aula || '').includes(edif)) return false;
+      if (mat && !(p.materia || '').toLowerCase().includes(mat)) return false;
+      if (edif || aulaSearch) {
+        if (!p.aula || p.aula === "Sin Aula") return false;
+        
+        const aulaParts = p.aula.split(', ').map(a => a.trim());
+        
+        if (edif) {
+          const matchModulo = aulaParts.some(a => a[0] === edif);
+          if (!matchModulo) return false;
+        }
+        
+        if (aulaSearch) {
+          const matchAula = aulaParts.some(a => a.endsWith(aulaSearch));
+          if (!matchAula) return false;
+        }
+      }
       if (selectedDepts.length > 0) {
         const dummyDept = `departamento ${(p.id_profesor % 4) + 1}`;
         if (!selectedDepts.includes(dummyDept)) return false;
       }
+      
+      if (asist) {
+        const statusObj = getProfessorStatus(p.hora_entrada, p.hora_salida, p.schedule_slots);
+        let st = statusObj.label;
+        if (st.includes('Activo')) st = 'Activo';
+        if (st === 'Sin Marcar Salida') st = 'No marcó salida';
+        if (st.toLowerCase() !== asist.toLowerCase()) return false;
+      }
+      
       return true;
     });
 
@@ -607,15 +712,22 @@ function initFilters() {
   };
 
   if (searchInput) searchInput.addEventListener('input', applyFilters);
-  if (selMateria) selMateria.addEventListener('change', applyFilters);
-  if (selFacultad) selFacultad.addEventListener('change', applyFilters);
+  if (inputMateria) inputMateria.addEventListener('input', applyFilters);
   if (selEdificio) selEdificio.addEventListener('change', applyFilters);
+  if (inputAula) {
+    inputAula.addEventListener('input', function() {
+      let val = this.value.replace(/[^0-9]/g, '');
+      if (val.length >= 1 && !/^[1-9]$/.test(val[0])) val = '';
+      if (val.length >= 2 && !/^[0-4]$/.test(val[1])) val = val.slice(0, 1);
+      if (val.length >= 3 && !/^[1-4]$/.test(val[2])) val = val.slice(0, 2);
+      this.value = val;
+      applyFilters();
+    });
+  }
   depts.forEach(cb => cb.addEventListener('change', applyFilters));
 
   if (selAsist1) {
-    selAsist1.addEventListener('change', () => {
-      alert("Filtrado por asistencia en tiempo real configurado en simulación.");
-    });
+    selAsist1.addEventListener('change', applyFilters);
   }
 }
 
@@ -703,7 +815,20 @@ async function loadCrudTable(tableName) {
           };
           td.appendChild(qrBtn);
         } else {
-          td.textContent = row[col] !== null ? row[col] : '-';
+          let val = row[col] !== null && row[col] !== '' ? row[col] : '-';
+          td.textContent = val;
+          if (tableName === 'profesor' && ['telefono_personal', 'telefono_emergencia', 'cedula'].includes(col)) {
+              if (val === '-') {
+                  td.classList.add('editable-empty');
+                  td.style.cursor = 'pointer';
+                  td.style.color = '#3b82f6';
+                  td.style.textDecoration = 'underline';
+                  td.textContent = 'Añadir';
+              } else {
+                  td.style.cursor = 'pointer';
+              }
+              td.onclick = (e) => handleInlineEdit(tableName, rowId, col, td);
+          }
         }
         tr.appendChild(td);
       });
@@ -739,6 +864,58 @@ async function loadCrudTable(tableName) {
     console.error("Error al cargar tabla CRUD:", err);
     if (thead) thead.innerHTML = '<tr><td colspan="5">Error al leer la base de datos.</td></tr>';
   }
+}
+
+// Editar en línea campos específicos
+async function handleInlineEdit(tableName, rowId, col, tdElement) {
+    const isTelefono = col.startsWith('telefono');
+    const isCedula = col === 'cedula';
+    const label = friendlyNames[col] || col;
+
+    let currentValue = tdElement.textContent;
+    if (currentValue === 'Añadir' || currentValue === '-') currentValue = '';
+
+    const newValue = prompt(`Ingresa nuevo valor para ${label}:`, currentValue);
+    if (newValue === null) return; // User cancelled
+
+    const val = newValue.trim();
+
+    // Validations
+    if (val !== '') {
+        if (isCedula) {
+            // Validation: 7 or 8 digits
+            if (!/^\d{7,8}$/.test(val)) {
+                alert("La cédula debe contener 7 u 8 dígitos.");
+                return;
+            }
+        }
+        if (isTelefono) {
+            // Validation: Exactly 11 digits OR 13 if starts with +58 (e.g. +584141234567)
+            if (!/^(\d{11}|\+58\d{10})$/.test(val)) {
+                alert("El teléfono debe contener exactamente 11 dígitos, o 13 si inicia con +58.");
+                return;
+            }
+        }
+    }
+
+    try {
+        let res = { success: false };
+        const idColName = tableName === 'profesor' ? 'id_profesor' : 'id_materia';
+        if (window.eel) {
+            res = await eel.update_table_field(tableName, idColName, rowId, col, val)();
+        } else {
+            res = { success: true };
+        }
+
+        if (res.success) {
+            loadCrudTable(tableName);
+        } else {
+            alert("Error al actualizar: " + res.error);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de comunicación con el backend.");
+    }
 }
 
 // Ventanas Modales dinámicas
@@ -1025,8 +1202,10 @@ async function openScheduleAssignmentModal() {
 
   document.getElementById('schedule-details-text').textContent = `Día: ${dia} | Horario: ${startHour} - ${endHour}`;
 
-  const select = document.getElementById('schedule-materia-select');
-  select.innerHTML = '<option value="">Cargando materias...</option>';
+  const inputMateria = document.getElementById('schedule-materia-input');
+  const listContainer = document.getElementById('autocomplete-list-schedule');
+  inputMateria.value = '';
+  if (listContainer) listContainer.innerHTML = '';
 
   try {
     let materias = [];
@@ -1037,17 +1216,21 @@ async function openScheduleAssignmentModal() {
       materias = [];
     }
 
-    select.innerHTML = '<option value="">Selecciona una Materia</option>';
+    window.currentMateriasList = materias;
+
     if (materias.length === 0) {
-      select.innerHTML = '<option value="">No hay materias registradas. Agrégalas en "Gestionar Materias".</option>';
+      inputMateria.placeholder = 'No hay materias registradas.';
+      inputMateria.disabled = true;
     } else {
-      materias.forEach(m => {
-        select.innerHTML += `<option value="${m.id_materia}">${m.nb_materia}</option>`;
-      });
+      inputMateria.placeholder = 'Buscar y seleccionar Materia...';
+      inputMateria.disabled = false;
+      const materiaNames = materias.map(m => m.nb_materia);
+      setupAutocomplete('schedule-materia-input', 'autocomplete-list-schedule', materiaNames);
     }
   } catch (err) {
     console.error(err);
-    select.innerHTML = '<option value="">Error al cargar materias.</option>';
+    inputMateria.placeholder = 'Error al cargar materias.';
+    inputMateria.disabled = true;
   }
 
   document.getElementById('schedule-aula-input').value = '';
@@ -1062,11 +1245,20 @@ function closeScheduleModal() {
 // Guardar Asignación de Horario
 async function handleScheduleSubmit(e) {
   e.preventDefault();
-  const select = document.getElementById('schedule-materia-select');
+  const inputMateria = document.getElementById('schedule-materia-input');
   const aulaInput = document.getElementById('schedule-aula-input');
 
-  if (!select.value || !aulaInput.value) {
-    alert("Por favor, selecciona una materia e ingresa el aula.");
+  const selectedMateriaName = inputMateria.value.trim();
+  const foundMateria = (window.currentMateriasList || []).find(m => m.nb_materia === selectedMateriaName);
+
+  if (!foundMateria || !aulaInput.value) {
+    alert("Por favor, busca y selecciona una materia válida de la lista e ingresa el aula.");
+    return;
+  }
+
+  const aulaVal = aulaInput.value.trim();
+  if (!/^[1-9][0-4][1-4]$/.test(aulaVal)) {
+    alert("El número de aula es inválido. Debe tener exactamente 3 dígitos:\n- Módulo: 1 al 9\n- Piso: 0 al 4 (0 es PB)\n- Aula: 1 al 4\nEjemplo: 101");
     return;
   }
 
@@ -1084,7 +1276,7 @@ async function handleScheduleSubmit(e) {
 
   const payload = {
     id_profesor: currentSelectedProfesor.id_profesor,
-    id_materia: parseInt(select.value),
+    id_materia: foundMateria.id_materia,
     num_aula: aulaInput.value.trim(),
     dia_semana: dia,
     slots: slotsToSave
@@ -1600,6 +1792,9 @@ async function loadAuditTable() {
   tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando historial de asistencias...</td></tr>';
 
   try {
+    if ((!rawDashboardData || rawDashboardData.length === 0) && window.eel) {
+      rawDashboardData = await eel.get_dashboard_data()();
+    }
     let history = [];
     if (window.eel) {
       history = await eel.get_attendance_history()();
@@ -1629,15 +1824,27 @@ function renderAuditRows(history) {
     const tr = document.createElement('tr');
     const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
     const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
+    const hasEntry = log.hora_entrada && log.hora_entrada.trim() !== '';
 
-    const estadoBadge = hasExit
-      ? '<span style="font-weight: 700; color: #16a34a; background: #f0fdf4; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #bbf7d0;">Completado</span>'
-      : '<span style="font-weight: 700; color: #ca8a04; background: #fef9c3; padding: 4px 10px; border-radius: 6px; font-size: 12px; border: 1px solid #fef08a;">Activo (En Clase)</span>';
+    const profData = rawDashboardData.find(p => p.id_profesor === log.id_profesor);
+    const scheduleSlots = profData ? profData.schedule_slots : [];
+
+    const logDate = new Date(log.fecha_asistencia + 'T00:00:00');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isToday = log.fecha_asistencia === todayStr;
+    const evalTimeStr = isToday ? null : '23:59:59';
+
+    const statusInfo = getProfessorStatus(log.hora_entrada, log.hora_salida, scheduleSlots, logDate, evalTimeStr);
+    let label = statusInfo.label;
+    if (statusInfo.code === "ActivoEnClase" || statusInfo.code === "ActivoHoraLibre") {
+      label = "Activo";
+    }
+    const estadoBadge = `<span style="${statusInfo.style}">${label}</span>`;
 
     tr.innerHTML = `
       <td style="font-weight:600;">${profName}</td>
       <td>${log.fecha_asistencia}</td>
-      <td style="color:#16a34a; font-weight:600;">${log.hora_entrada}</td>
+      <td style="color:${hasEntry ? '#16a34a' : '#64748b'}; font-weight:600;">${hasEntry ? log.hora_entrada : '—'}</td>
       <td style="color:${hasExit ? '#2563eb' : '#64748b'}; font-weight:600;">${hasExit ? log.hora_salida : '—'}</td>
       <td>${estadoBadge}</td>
     `;
@@ -1690,8 +1897,24 @@ async function exportAuditToPDF() {
       history = [];
     }
 
+    // Aplicar filtros activos si los hay
+    const dateInput = document.getElementById('audit-filter-date');
+    const profesorInput = document.getElementById('audit-filter-profesor');
+    const selectedDate = dateInput ? dateInput.value : '';
+    const searchProfesor = profesorInput ? profesorInput.value.toLowerCase().trim() : '';
+
+    if (selectedDate) {
+      history = history.filter(log => log.fecha_asistencia === selectedDate);
+    }
+    if (searchProfesor) {
+      history = history.filter(log => {
+        const fullName = `${log.nb_profesor} ${log.ap_profesor}`.toLowerCase();
+        return fullName.includes(searchProfesor);
+      });
+    }
+
     if (!history || history.length === 0) {
-      alert("No hay registros de asistencia para exportar.");
+      alert("No hay registros de asistencia para exportar con los filtros actuales.");
       return;
     }
 
@@ -1706,7 +1929,14 @@ async function exportAuditToPDF() {
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     const nowStr = new Date().toLocaleString();
-    doc.text(`Generado el: ${nowStr} | Total registros: ${history.length}`, 14, 27);
+    let filterText = '';
+    if (selectedDate || searchProfesor) {
+      const parts = [];
+      if (selectedDate) parts.push(`Fecha: ${selectedDate}`);
+      if (searchProfesor) parts.push(`Profesor: "${searchProfesor}"`);
+      filterText = ` | Filtros: ${parts.join(', ')}`;
+    }
+    doc.text(`Generado el: ${nowStr} | Total registros: ${history.length}${filterText}`, 14, 27);
 
     doc.setDrawColor(226, 232, 240);
     doc.line(14, 32, 196, 32);
@@ -1715,13 +1945,27 @@ async function exportAuditToPDF() {
       const profName = `${log.nb_profesor} ${log.ap_profesor}`.trim();
       const hasExit = log.hora_salida && log.hora_salida.trim() !== '';
       const hasEntry = log.hora_entrada && log.hora_entrada.trim() !== '';
-      const statusLabel = hasExit ? "Completado" : "Activo (En Clase)";
+
+      const profData = rawDashboardData.find(p => p.id_profesor === log.id_profesor);
+      const scheduleSlots = profData ? profData.schedule_slots : [];
+
+      const logDate = new Date(log.fecha_asistencia + 'T00:00:00');
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isToday = log.fecha_asistencia === todayStr;
+      const evalTimeStr = isToday ? null : '23:59:59';
+
+      const statusInfo = getProfessorStatus(log.hora_entrada, log.hora_salida, scheduleSlots, logDate, evalTimeStr);
+      let label = statusInfo.label;
+      if (statusInfo.code === "ActivoEnClase" || statusInfo.code === "ActivoHoraLibre") {
+        label = "Activo";
+      }
+
       return [
         profName,
         log.fecha_asistencia,
         hasEntry ? log.hora_entrada : '—',
         hasExit ? log.hora_salida : '—',
-        statusLabel
+        label
       ];
     });
 

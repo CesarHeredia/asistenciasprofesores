@@ -4,10 +4,22 @@ Actúa como un controlador delgado delegando la persistencia y la lógica SQL a 
 import os
 import sys
 
-# Asegurar que importamos de forma relativa correcta
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# ── Resolución de rutas compatible con PyInstaller ──────────────────────
+# Cuando se ejecuta como .exe empaquetado, PyInstaller extrae los archivos
+# de datos en una carpeta temporal (sys._MEIPASS). En modo desarrollo se
+# usa la ubicación real del script.
+if getattr(sys, 'frozen', False):
+    # Ejecutable empaquetado con PyInstaller
+    BUNDLE_DIR = sys._MEIPASS                              # archivos de datos (front, backend, icon)
+    APP_DIR = os.path.dirname(sys.executable)              # carpeta donde vive el .exe (para la BD)
+else:
+    # Modo desarrollo normal
+    BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
+    APP_DIR = BUNDLE_DIR
+
+ROOT = BUNDLE_DIR  # compatibilidad con el resto del código
 if ROOT not in sys.path:
-    sys.path.append(ROOT)
+    sys.path.insert(0, ROOT)
 
 from backend import backend
 
@@ -17,11 +29,24 @@ except Exception as e:
     print("Eel no está instalado. Instálalo con: pip install eel")
     raise
 
-WEB = os.path.join(ROOT, 'front')
-DB_PATH = os.path.join(ROOT, 'backend', 'db', 'gestion_academica.db')
+WEB = os.path.join(BUNDLE_DIR, 'front')
+
+# La base de datos se guarda junto al ejecutable para que persista entre ejecuciones
+DB_DIR = os.path.join(APP_DIR, 'backend', 'db')
+os.makedirs(DB_DIR, exist_ok=True)
+DB_PATH = os.path.join(DB_DIR, 'gestion_academica.db')
+
+# Si estamos en modo empaquetado y no existe la BD local, copiar la que viene incluida
+if getattr(sys, 'frozen', False) and not os.path.exists(DB_PATH):
+    import shutil
+    bundled_db = os.path.join(BUNDLE_DIR, 'backend', 'db', 'gestion_academica.db')
+    if os.path.exists(bundled_db):
+        shutil.copy2(bundled_db, DB_PATH)
+        print(f"Base de datos copiada desde el bundle a: {DB_PATH}")
 
 # Inicializar Eel con la carpeta de frontend
 eel.init(WEB)
+
 
 # Garantizar que la base de datos y sus tablas estén listas e inicializadas
 backend.init_database(DB_PATH)
@@ -40,6 +65,11 @@ def get_table_data(table_name):
 def add_table_row(table_name, row_data):
     """Añade un nuevo registro de forma parametrizada y retorna el estado de éxito."""
     return backend.add_table_row(DB_PATH, table_name, row_data)
+
+@eel.expose
+def update_table_field(table_name, id_col_name, row_id, field_name, new_value):
+    """Actualiza un solo campo de una tabla específica."""
+    return backend.update_table_field(DB_PATH, table_name, id_col_name, row_id, field_name, new_value)
 
 @eel.expose
 def delete_table_row(table_name, row_id):
@@ -110,12 +140,13 @@ if __name__ == '__main__':
     eel_thread.start()
 
     # 4. Crear e iniciar la ventana nativa de escritorio limpia usando pywebview
+    ICON_PATH = os.path.join(BUNDLE_DIR, 'front', 'scr', 'image', 'usmlgoretina-1.png')
     print(f"Abriendo ventana nativa de PyWebView para la aplicación...")
     webview.create_window(
-        "Gestión de Asistencia Académica",
+        "Sistema de Asistencia",
         url=f"http://localhost:{port}/index.html",
         width=1300,
         height=800,
         resizable=True
     )
-    webview.start(gui='qt')
+    webview.start(gui='qt', icon=ICON_PATH)

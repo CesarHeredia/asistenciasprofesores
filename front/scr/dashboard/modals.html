@@ -33,11 +33,10 @@
         Día: Jueves | Horario: 15:15 - 17:30
       </div>
       <form id="schedule-form">
-        <div class="form-group">
+        <div class="form-group autocomplete-group">
           <label class="form-label">Materia</label>
-          <select class="form-input" id="schedule-materia-select" required>
-            <option value="">Selecciona una Materia</option>
-          </select>
+          <input type="text" class="form-input" id="schedule-materia-input" placeholder="Buscar y seleccionar Materia..." autocomplete="off" required>
+          <div id="autocomplete-list-schedule" class="autocomplete-items hidden"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Aula</label>

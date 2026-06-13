@@ -16,21 +16,16 @@ def init_database(db_path):
     con = get_db_connection(db_path)
     cur = con.cursor()
 
-    # 1. Tabla Facultad
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS facultad (
-            id_facultad INTEGER PRIMARY KEY AUTOINCREMENT,
-            nb_facultad TEXT NOT NULL
-        );
-    """)
-
     # 2. Tabla Profesor
     cur.execute("""
         CREATE TABLE IF NOT EXISTS profesor (
             id_profesor INTEGER PRIMARY KEY AUTOINCREMENT,
             nb_profesor TEXT NOT NULL,
             ap_profesor TEXT NOT NULL,
-            qr_content TEXT DEFAULT '' NOT NULL
+            qr_content TEXT DEFAULT '' NOT NULL,
+            telefono_personal TEXT DEFAULT '',
+            telefono_emergencia TEXT DEFAULT '',
+            cedula TEXT DEFAULT ''
         );
     """)
 
@@ -39,6 +34,12 @@ def init_database(db_path):
     col_names = [row[1] for row in cur.fetchall()]
     if 'qr_content' not in col_names:
         cur.execute("ALTER TABLE profesor ADD COLUMN qr_content TEXT DEFAULT '' NOT NULL;")
+    if 'telefono_personal' not in col_names:
+        cur.execute("ALTER TABLE profesor ADD COLUMN telefono_personal TEXT DEFAULT '';")
+    if 'telefono_emergencia' not in col_names:
+        cur.execute("ALTER TABLE profesor ADD COLUMN telefono_emergencia TEXT DEFAULT '';")
+    if 'cedula' not in col_names:
+        cur.execute("ALTER TABLE profesor ADD COLUMN cedula TEXT DEFAULT '';")
 
     # 3. Tabla Materia
     cur.execute("""
@@ -52,9 +53,7 @@ def init_database(db_path):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS aula (
             id_aula INTEGER PRIMARY KEY AUTOINCREMENT,
-            num_aula TEXT NOT NULL,
-            id_facultad INTEGER NOT NULL,
-            FOREIGN KEY (id_facultad) REFERENCES facultad(id_facultad) ON DELETE RESTRICT
+            num_aula TEXT NOT NULL
         );
     """)
 
@@ -76,91 +75,14 @@ def init_database(db_path):
             id_horario INTEGER PRIMARY KEY AUTOINCREMENT,
             id_profesor INTEGER NOT NULL,
             id_materia INTEGER NOT NULL,
-            id_aula INTEGER,
             dia_semana TEXT NOT NULL,
             hora_inicio TEXT NOT NULL,
             hora_fin TEXT NOT NULL,
             num_aula TEXT,
             FOREIGN KEY (id_profesor) REFERENCES profesor(id_profesor) ON DELETE CASCADE,
-            FOREIGN KEY (id_materia) REFERENCES materia(id_materia) ON DELETE CASCADE,
-            FOREIGN KEY (id_aula) REFERENCES aula(id_aula) ON DELETE CASCADE
+            FOREIGN KEY (id_materia) REFERENCES materia(id_materia) ON DELETE CASCADE
         );
     """)
-
-    # --- SEED DE FACULTADES Y AULAS ---
-    # Solo si la tabla facultad está vacía
-    cur.execute("SELECT COUNT(*) FROM facultad;")
-    if cur.fetchone()[0] == 0:
-        facultades = ["Ingeniería", "Ciencias Exactas", "Humanidades"]
-        facultad_ids = {}
-        for f in facultades:
-            cur.execute("INSERT INTO facultad (nb_facultad) VALUES (?);", (f,))
-            facultad_ids[f] = cur.lastrowid
-            
-        aulas_data = [
-            ("101-B", "Ingeniería"),
-            ("205", "Ciencias Exactas"),
-            ("310", "Humanidades"),
-            ("G-01", "Ingeniería")
-        ]
-        for num_aula, fac_name in aulas_data:
-            fac_id = facultad_ids[fac_name]
-            cur.execute("INSERT INTO aula (num_aula, id_facultad) VALUES (?, ?);", (num_aula, fac_id))
-
-    # --- SEED DE PROFESORES, MATERIAS Y HORARIOS ---
-    # ¡SOLO si no hay profesores ni materias ya registradas!
-    # Esto protege y preserva por completo la base de datos original del usuario.
-    cur.execute("SELECT COUNT(*) FROM profesor;")
-    prof_count = cur.fetchone()[0]
-    
-    cur.execute("SELECT COUNT(*) FROM materia;")
-    mat_count = cur.fetchone()[0]
-
-    if prof_count == 0 and mat_count == 0:
-        profesores_data = [
-            ("Carlos", "Rodríguez"),
-            ("Ana", "Pérez"),
-            ("Sofía", "Martínez"),
-            ("David", "Chen")
-        ]
-        prof_ids = []
-        for nb, ap in profesores_data:
-            cur.execute("INSERT INTO profesor (nb_profesor, ap_profesor, qr_content) VALUES (?, ?, '');", (nb, ap))
-            prof_ids.append(cur.lastrowid)
-
-        materias_data = [
-            "Algoritmos Avanzados",
-            "Introducción a la Física",
-            "Historia del Arte",
-            "Programación de Sistemas"
-        ]
-        mat_ids = []
-        for m in materias_data:
-            cur.execute("INSERT INTO materia (nb_materia) VALUES (?);", (m,))
-            mat_ids.append(cur.lastrowid)
-
-        horarios_data = [
-            (prof_ids[0], mat_ids[0], "Lunes", "07:00", "08:30", "101-B"),
-            (prof_ids[1], mat_ids[1], "Lunes", "08:30", "10:00", "205"),
-            (prof_ids[2], mat_ids[2], "Lunes", "10:00", "11:30", "310"),
-            (prof_ids[3], mat_ids[3], "Lunes", "11:30", "13:00", "G-01")
-        ]
-        for p_id, m_id, dia, h_ini, h_fin, aula in horarios_data:
-            cur.execute("""
-                INSERT INTO horario (id_profesor, id_materia, dia_semana, hora_inicio, hora_fin, num_aula)
-                VALUES (?, ?, ?, ?, ?, ?);
-            """, (p_id, m_id, dia, h_ini, h_fin, aula))
-
-        asistencias_data = [
-            (prof_ids[0], "2026-05-26", "06:55:00", "08:35:00"),
-            (prof_ids[1], "2026-05-26", "08:28:00", "10:05:00"),
-            (prof_ids[2], "2026-05-26", "09:50:00", "11:32:00")
-        ]
-        for p_id, fecha, h_ent, h_sal in asistencias_data:
-            cur.execute("""
-                INSERT INTO asistencias (id_profesor, fecha_asistencia, hora_entrada, hora_salida)
-                VALUES (?, ?, ?, ?);
-            """, (p_id, fecha, h_ent, h_sal))
 
     con.commit()
     con.close()
@@ -189,10 +111,10 @@ def get_dashboard_data(db_path):
             pid = r["id_profesor"]
             h_in = r["hora_entrada"]
             h_out = r["hora_salida"]
-            if h_in and (h_out is None or h_out == ""):
-                estado_profesores[pid] = "Activo"
-            else:
-                estado_profesores[pid] = "Inactivo"
+            estado_profesores[pid] = {
+                "hora_entrada": h_in,
+                "hora_salida": h_out
+            }
         
         # JOIN query to load complete teachers and schedule/subject information
         query = """
@@ -202,15 +124,12 @@ def get_dashboard_data(db_path):
                 p.ap_profesor,
                 m.nb_materia,
                 h.num_aula,
-                COALESCE(f.nb_facultad, 'Sin Asignar') AS nb_facultad,
                 h.dia_semana,
                 h.hora_inicio,
                 h.hora_fin
             FROM profesor p
             LEFT JOIN horario h ON p.id_profesor = h.id_profesor
             LEFT JOIN materia m ON h.id_materia = m.id_materia
-            LEFT JOIN aula a ON h.num_aula = a.num_aula
-            LEFT JOIN facultad f ON a.id_facultad = f.id_facultad
         """
         cur.execute(query)
         rows = cur.fetchall()
@@ -219,7 +138,7 @@ def get_dashboard_data(db_path):
         # Group database items by teacher ID
         profesores_dict = {}
         for r in rows:
-            id_prof, nb, ap, materia, aula, facultad, dia, h_ini, h_fin = r
+            id_prof, nb, ap, materia, aula, dia, h_ini, h_fin = r
             nombre_completo = f"{nb} {ap}".strip()
             
             if id_prof not in profesores_dict:
@@ -228,7 +147,6 @@ def get_dashboard_data(db_path):
                     "nombre": nombre_completo,
                     "materias": [],
                     "aulas": [],
-                    "facultades": [],
                     "horarios": [],
                     "schedule_slots": []
                 }
@@ -237,8 +155,6 @@ def get_dashboard_data(db_path):
                 profesores_dict[id_prof]["materias"].append(materia)
             if aula and aula not in profesores_dict[id_prof]["aulas"]:
                 profesores_dict[id_prof]["aulas"].append(str(aula))
-            if facultad and facultad != 'Sin Asignar' and facultad not in profesores_dict[id_prof]["facultades"]:
-                profesores_dict[id_prof]["facultades"].append(facultad)
             if dia:
                 profesores_dict[id_prof]["horarios"].append(f"{dia} ({h_ini}-{h_fin})")
                 profesores_dict[id_prof]["schedule_slots"].append({
@@ -254,20 +170,6 @@ def get_dashboard_data(db_path):
             materia_str = ", ".join(info["materias"]) if info["materias"] else "Sin Materia Asignada"
             aula_str = ", ".join(info["aulas"]) if info["aulas"] else "Sin Aula"
             
-            # Resolve a representative faculty
-            if info["facultades"]:
-                facultad_str = info["facultades"][0]
-            else:
-                m_lower = materia_str.lower()
-                if any(x in m_lower for x in ["ingenieria", "programacion", "sistemas", "algoritmos", "computacion"]):
-                    facultad_str = "Ingeniería"
-                elif any(x in m_lower for x in ["fisica", "quimica", "matematica", "calculo", "algebra"]):
-                    facultad_str = "Ciencias Exactas"
-                elif any(x in m_lower for x in ["arte", "historia", "humanidades", "lengua", "filosofia"]):
-                    facultad_str = "Humanidades"
-                else:
-                    facultad_str = "Ingeniería"  # Por defecto
-            
             # Smart avatar assignment
             avatar = "🧔🏽"
             nombre_lower = info["nombre"].lower()
@@ -280,16 +182,17 @@ def get_dashboard_data(db_path):
             else:
                 avatar = "🧔🏽" if id_prof % 2 == 0 else "👨🏼"
             
+            attendance_info = estado_profesores.get(id_prof, {"hora_entrada": None, "hora_salida": None})
             result.append({
                 "id_profesor": id_prof,
                 "nombre": info["nombre"],
                 "materia": materia_str,
                 "aula": aula_str,
-                "facultad": facultad_str,
                 "avatar": avatar,
                 "horario": ", ".join(info["horarios"]) if info["horarios"] else "No programado",
                 "schedule_slots": info["schedule_slots"],
-                "estado_asistencia": estado_profesores.get(id_prof, "Inactivo")
+                "hora_entrada": attendance_info["hora_entrada"],
+                "hora_salida": attendance_info["hora_salida"]
             })
             
         return result
@@ -343,6 +246,28 @@ def add_table_row(db_path, table_name, row_data):
         return {"success": True}
     except Exception as e:
         print(f"Error insertando en {table_name} en backend:", e)
+        return {"success": False, "error": str(e)}
+
+def update_table_field(db_path, table_name, id_col_name, row_id, field_name, new_value):
+    """Actualiza un solo campo de una tabla específica."""
+    if not os.path.exists(db_path):
+        return {"success": False, "error": "BD no encontrada"}
+    
+    # Validar nombres de tabla y columnas para evitar inyecciones SQL
+    if table_name not in ["profesor", "materia"]:
+        return {"success": False, "error": "Tabla no válida"}
+        
+    try:
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        
+        query = f"UPDATE {table_name} SET {field_name} = ? WHERE {id_col_name} = ?"
+        cur.execute(query, (new_value, row_id))
+        con.commit()
+        con.close()
+        return {"success": True}
+    except Exception as e:
+        print(f"Error actualizando {field_name} en {table_name}:", e)
         return {"success": False, "error": str(e)}
 
 def delete_table_row(db_path, table_name, row_id):
@@ -593,6 +518,35 @@ def get_attendance_history(db_path):
         cur.execute(query)
         rows = [dict(r) for r in cur.fetchall()]
         con.close()
+
+        # Obtener todos los profesores
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        cur.execute("SELECT id_profesor, nb_profesor, ap_profesor FROM profesor")
+        all_profs = [dict(p) for p in cur.fetchall()]
+        con.close()
+
+        import datetime
+        today_str = datetime.date.today().isoformat()
+
+        # Profesores que ya tienen registros hoy
+        checked_in_today = {r["id_profesor"] for r in rows if r["fecha_asistencia"] == today_str}
+
+        for prof in all_profs:
+            if prof["id_profesor"] not in checked_in_today:
+                rows.append({
+                    "id_asistencia": None,
+                    "fecha_asistencia": today_str,
+                    "hora_entrada": "",
+                    "hora_salida": "",
+                    "id_profesor": prof["id_profesor"],
+                    "nb_profesor": prof["nb_profesor"],
+                    "ap_profesor": prof["ap_profesor"],
+                    "estado": "Ausente"
+                })
+
+        # Ordenar por fecha desc, luego por hora_entrada desc
+        rows.sort(key=lambda x: (x["fecha_asistencia"] or "", x["hora_entrada"] or ""), reverse=True)
         return rows
     except Exception as e:
         print("Error obteniendo historial de asistencias:", e)

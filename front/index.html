@@ -154,11 +154,10 @@
         <div class="filter-section">
           <h3 class="filter-title">FILTRAR POR:</h3>
 
-          <div class="filter-group">
+          <div class="filter-group autocomplete-group">
             <label class="filter-label">Materia</label>
-            <select class="filter-select" id="filter-materia">
-              <option value="">Materia</option>
-            </select>
+            <input type="text" class="filter-select" id="filter-materia" placeholder="Buscar materia..." autocomplete="off">
+            <div id="autocomplete-list-filter" class="autocomplete-items hidden"></div>
           </div>
 
           <div class="filter-group">
@@ -175,6 +174,11 @@
               <option value="8">Módulo 8</option>
               <option value="9">Módulo 9</option>
             </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label">Aula</label>
+            <input type="text" id="filter-aula" class="filter-select" placeholder="Ej: 02 (Piso y Aula)" style="padding: 8px 10px; box-sizing: border-box;" maxlength="2" />
           </div>
         </div>
 

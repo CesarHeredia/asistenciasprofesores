@@ -9,7 +9,10 @@ CREATE TABLE profesor (
     id_profesor INTEGER PRIMARY KEY AUTOINCREMENT,
     nb_profesor TEXT NOT NULL,
     ap_profesor TEXT NOT NULL,
-    qr_content TEXT NOT NULL
+    qr_content TEXT NOT NULL,
+    telefono_personal TEXT,
+    telefono_emergencia TEXT,
+    cedula TEXT
 );
 
 -- Tabla: materia

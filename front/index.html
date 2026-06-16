@@ -113,9 +113,9 @@
       </div>
 
       <nav class="nav-menu">
-        <!-- Botón 1: Gestionar Profesores -->
+        <!-- Botón 1: Ver Docentes -->
         <button class="menu-btn active" data-view="dashboard">
-          <span class="menu-text">Gestionar<br />profesores</span>
+          <span class="menu-text">Ver<br />docentes</span>
         </button>
 
         <!-- Botón 2: Gestionar Materias -->
@@ -128,7 +128,17 @@
           <span class="menu-text">Auditoría</span>
         </button>
 
-        <!-- Botón 4: Cerrar Sesión -->
+        <!-- Botón 4: Asistente IA -->
+        <button class="menu-btn" data-view="chat-ia">
+          <span class="menu-text">Asistente IA</span>
+        </button>
+
+        <!-- Botón 5: Perfil de Administrador -->
+        <button class="menu-btn" data-view="perfil">
+          <span class="menu-text">Perfil Admin</span>
+        </button>
+
+        <!-- Botón 5: Cerrar Sesión -->
         <button class="menu-btn logout-menu-btn" id="btn-admin-logout">
           <span class="menu-text">Cerrar Sesión</span>
         </button>
@@ -203,11 +213,17 @@
           <div class="filter-group">
             <label class="filter-label">Fecha específica</label>
             <input type="date" id="audit-filter-date" class="filter-select" style="padding: 8px 10px; cursor: pointer;"
-              title="Selecciona una fecha para filtrar el historial" />
+              title="Selecciona una fecha para filtrar el historial" onchange="const m = document.getElementById('audit-filter-month'); if (m) m.value=''; applyAuditDateFilter();" />
+          </div>
+
+          <div class="filter-group" style="margin-top: 12px;">
+            <label class="filter-label">Mes completo</label>
+            <input type="month" id="audit-filter-month" class="filter-select" style="padding: 8px 10px; cursor: pointer;"
+              title="Selecciona un mes para filtrar el historial" onchange="const d = document.getElementById('audit-filter-date'); if (d) d.value=''; applyAuditDateFilter();" />
           </div>
 
           <button id="btn-apply-audit-filter" onclick="applyAuditDateFilter()" class="action-btn"
-            style="width:100%; margin-top:10px; font-size:13px; padding:10px;">
+            style="width:100%; margin-top:14px; font-size:13px; padding:10px;">
             Aplicar Filtro
           </button>
 

@@ -1,0 +1,55 @@
+<!-- perfil.html -->
+<section id="view-perfil" class="content-view">
+  <header class="panel-header flex-header">
+    <div class="title-meta-group">
+      <h1 class="main-title">PERFIL DE ADMINISTRADOR</h1>
+      <span class="schedule-subtitle">Configuración de credenciales de acceso al sistema</span>
+    </div>
+  </header>
+
+  <div class="scroll-container" style="max-width: 600px; margin: 0 auto; padding: 20px 0;">
+    <div class="table-card" style="padding: 24px;">
+      <form id="admin-profile-form" style="display: flex; flex-direction: column; gap: 20px;">
+        <div class="form-group">
+          <label class="form-label" style="font-weight: 600; font-size: 14px; margin-bottom: 8px; display: block; color: var(--text-dark);">
+            Nombre de Usuario
+          </label>
+          <input type="text" id="profile-username" class="form-input" placeholder="Usuario admin" style="width: 100%;" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-weight: 600; font-size: 14px; margin-bottom: 8px; display: block; color: var(--text-dark);">
+            Nueva Contraseña
+          </label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <input type="password" id="profile-password" class="form-input" placeholder="Contraseña admin" style="width: 100%; padding-right: 40px;" required />
+            <button type="button" id="btn-toggle-profile-pass" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px;">
+              👁️
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-weight: 600; font-size: 14px; margin-bottom: 8px; display: block; color: var(--text-dark);">
+            API Key de Gemini (para el Asistente IA)
+          </label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <input type="password" id="profile-gemini-key" class="form-input" placeholder="Introduce tu API Key de Gemini..." style="width: 100%; padding-right: 40px;" />
+            <button type="button" id="btn-toggle-profile-key" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px;">
+              👁️
+            </button>
+          </div>
+          <span style="font-size: 12px; color: var(--text-muted); margin-top: 6px; display: block;">
+            Puedes obtener una API Key gratuita en <a href="https://aistudio.google.com/" target="_blank" style="color: var(--primary); text-decoration: underline; cursor: pointer;">Google AI Studio</a>.
+          </span>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 10px; justify-content: flex-end;">
+          <button type="submit" class="action-btn" id="btn-save-profile" style="background-color: var(--primary); border-color: var(--primary); color: white; min-width: 140px;">
+            <span>Guardar Cambios</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>

@@ -84,6 +84,27 @@ def init_database(db_path):
         );
     """)
 
+    # 7. Tabla Configuración Admin (credenciales editables y api key)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            username TEXT NOT NULL DEFAULT 'admin',
+            password TEXT NOT NULL DEFAULT 'admin',
+            gemini_api_key TEXT DEFAULT ''
+        );
+    """)
+
+    # Migración para agregar columna gemini_api_key si no existe
+    cur.execute("PRAGMA table_info(admin_config);")
+    config_cols = [row[1] for row in cur.fetchall()]
+    if 'gemini_api_key' not in config_cols:
+        cur.execute("ALTER TABLE admin_config ADD COLUMN gemini_api_key TEXT DEFAULT '';")
+
+    # Insertar credenciales por defecto si la tabla está vacía
+    cur.execute("SELECT COUNT(*) FROM admin_config;")
+    if cur.fetchone()[0] == 0:
+        cur.execute("INSERT INTO admin_config (id, username, password, gemini_api_key) VALUES (1, 'admin', 'admin', '');")
+
     con.commit()
     con.close()
 
@@ -518,39 +539,217 @@ def get_attendance_history(db_path):
         cur.execute(query)
         rows = [dict(r) for r in cur.fetchall()]
         con.close()
-
-        # Obtener todos los profesores
-        con = get_db_connection(db_path)
-        cur = con.cursor()
-        cur.execute("SELECT id_profesor, nb_profesor, ap_profesor FROM profesor")
-        all_profs = [dict(p) for p in cur.fetchall()]
-        con.close()
-
-        import datetime
-        today_str = datetime.date.today().isoformat()
-
-        # Profesores que ya tienen registros hoy
-        checked_in_today = {r["id_profesor"] for r in rows if r["fecha_asistencia"] == today_str}
-
-        for prof in all_profs:
-            if prof["id_profesor"] not in checked_in_today:
-                rows.append({
-                    "id_asistencia": None,
-                    "fecha_asistencia": today_str,
-                    "hora_entrada": "",
-                    "hora_salida": "",
-                    "id_profesor": prof["id_profesor"],
-                    "nb_profesor": prof["nb_profesor"],
-                    "ap_profesor": prof["ap_profesor"],
-                    "estado": "Ausente"
-                })
-
-        # Ordenar por fecha desc, luego por hora_entrada desc
-        rows.sort(key=lambda x: (x["fecha_asistencia"] or "", x["hora_entrada"] or ""), reverse=True)
         return rows
     except Exception as e:
         print("Error obteniendo historial de asistencias:", e)
         return []
+
+def get_admin_config(db_path):
+    """Obtiene el usuario, contraseña y API Key de Gemini del administrador desde la tabla admin_config."""
+    if not os.path.exists(db_path):
+        return {"username": "admin", "password": "admin", "gemini_api_key": ""}
+    try:
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        cur.execute("SELECT username, password, gemini_api_key FROM admin_config WHERE id = 1")
+        row = cur.fetchone()
+        con.close()
+        if row:
+            return dict(row)
+        return {"username": "admin", "password": "admin", "gemini_api_key": ""}
+    except Exception as e:
+        print("Error obteniendo configuración de admin:", e)
+        return {"username": "admin", "password": "admin", "gemini_api_key": ""}
+
+def update_admin_config(db_path, username, password, gemini_api_key=""):
+    """Actualiza el usuario, contraseña y API Key de Gemini del administrador en la tabla admin_config."""
+    if not os.path.exists(db_path):
+        return {"success": False, "error": "Base de datos no encontrada"}
+    try:
+        con = get_db_connection(db_path)
+        cur = con.cursor()
+        cur.execute("UPDATE admin_config SET username = ?, password = ?, gemini_api_key = ? WHERE id = 1", (username, password, gemini_api_key))
+        con.commit()
+        con.close()
+        return {"success": True}
+    except Exception as e:
+        print("Error actualizando configuración de admin:", e)
+        return {"success": False, "error": str(e)}
+
+def get_all_system_context(db_path):
+    """Compila toda la información de la base de datos para servir como contexto a la IA."""
+    import datetime
+    
+    if not os.path.exists(db_path):
+        return "No hay base de datos disponible."
+    
+    con = get_db_connection(db_path)
+    cur = con.cursor()
+    
+    # Profesores
+    cur.execute("SELECT id_profesor, nb_profesor, ap_profesor, telefono_personal, telefono_emergencia, cedula FROM profesor")
+    profesores = [dict(r) for r in cur.fetchall()]
+    
+    # Materias
+    cur.execute("SELECT id_materia, nb_materia FROM materia")
+    materias = [dict(r) for r in cur.fetchall()]
+    
+    # Aulas
+    cur.execute("SELECT id_aula, num_aula FROM aula")
+    aulas = [dict(r) for r in cur.fetchall()]
+    
+    # Horarios
+    cur.execute("""
+        SELECT h.id_horario, p.nb_profesor, p.ap_profesor, m.nb_materia, h.dia_semana, h.hora_inicio, h.hora_fin, h.num_aula
+        FROM horario h
+        JOIN profesor p ON h.id_profesor = p.id_profesor
+        JOIN materia m ON h.id_materia = m.id_materia
+    """)
+    horarios = [dict(r) for r in cur.fetchall()]
+    
+    # Asistencias recientes (últimas 100 filas)
+    cur.execute("""
+        SELECT a.fecha_asistencia, a.hora_entrada, a.hora_salida, p.nb_profesor, p.ap_profesor
+        FROM asistencias a
+        JOIN profesor p ON a.id_profesor = p.id_profesor
+        ORDER BY a.fecha_asistencia DESC, a.hora_entrada DESC
+        LIMIT 100
+    """)
+    asistencias = [dict(r) for r in cur.fetchall()]
+    
+    con.close()
+    
+    # Obtener fecha y hora actuales del sistema para dárselas a la IA
+    now = datetime.datetime.now()
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    dia_semana_actual = dias[now.weekday()]
+    fecha_actual = now.strftime("%Y-%m-%d")
+    hora_actual = now.strftime("%H:%M:%S")
+    
+    context = []
+    
+    context.append("--- FECHA Y HORA ACTUAL DEL SISTEMA (USA ESTO PARA UBICAR 'HOY' O EL DIA ACTUAL) ---")
+    context.append(f"Fecha de hoy: {fecha_actual}")
+    context.append(f"Día de la semana de hoy: {dia_semana_actual}")
+    context.append(f"Hora actual: {hora_actual}\n")
+    
+    context.append("--- DATOS DE PROFESORES ---")
+    for p in profesores:
+        context.append(f"Profesor ID {p['id_profesor']}: {p['nb_profesor']} {p['ap_profesor']} | Cédula: {p['cedula']} | Teléfono: {p['telefono_personal']} | Emergencia: {p['telefono_emergencia']}")
+        
+    context.append("\n--- MATERIAS DISPONIBLES ---")
+    for m in materias:
+        context.append(f"Materia ID {m['id_materia']}: {m['nb_materia']}")
+        
+    context.append("\n--- AULAS REGISTRADAS ---")
+    for a in aulas:
+        context.append(f"Aula ID {a['id_aula']}: {a['num_aula']}")
+        
+    context.append("\n--- HORARIOS Y ASIGNACIONES ---")
+    for h in horarios:
+        context.append(f"El profesor {h['nb_profesor']} {h['ap_profesor']} enseña la materia '{h['nb_materia']}' el día {h['dia_semana']} de {h['hora_inicio']} a {h['hora_fin']} en el aula '{h['num_aula']}'")
+        
+    context.append("\n--- HISTORIAL DE ASISTENCIAS (ÚLTIMOS REGISTROS) ---")
+    for a in asistencias:
+        salida_str = f" a las {a['hora_salida']}" if a['hora_salida'] else " (No ha marcado salida aún)"
+        context.append(f"Fecha: {a['fecha_asistencia']} | {a['nb_profesor']} {a['ap_profesor']} entró a las {a['hora_entrada']}{salida_str}")
+
+    # Calcular inasistentes confirmados de HOY (clases que ya terminaron y el profesor no se presentó)
+    now_minutes = now.hour * 60 + now.minute
+    profesores_asistieron_hoy = set(
+        a['nb_profesor'] + ' ' + a['ap_profesor']
+        for a in asistencias if a['fecha_asistencia'] == fecha_actual
+    )
+
+    ausentes_hoy = []
+    # Agrupar horarios por profesor y verificar si todas sus clases de hoy ya terminaron
+    prof_slots_hoy = {}
+    for h in horarios:
+        if h['dia_semana'] == dia_semana_actual:
+            nombre = f"{h['nb_profesor']} {h['ap_profesor']}"
+            if nombre not in prof_slots_hoy:
+                prof_slots_hoy[nombre] = []
+            prof_slots_hoy[nombre].append(h)
+
+    for nombre_prof, slots in prof_slots_hoy.items():
+        if nombre_prof in profesores_asistieron_hoy:
+            continue  # Ya asistió, no es ausente
+        def slot_end_min(s):
+            parts = s['hora_fin'].split(':')
+            return int(parts[0]) * 60 + int(parts[1])
+        last_end = max(slot_end_min(s) for s in slots)
+        if now_minutes >= last_end:
+            ausentes_hoy.append(nombre_prof)
+
+    if ausentes_hoy:
+        context.append(f"\n--- INASISTENCIAS CONFIRMADAS DE HOY ({fecha_actual}) ---")
+        context.append("Los siguientes profesores tenían clases programadas para hoy, sus horarios ya terminaron, y NO se presentaron (INASISTENTES):")
+        for nombre in ausentes_hoy:
+            context.append(f"  - {nombre}")
+    else:
+        context.append(f"\n--- INASISTENCIAS DE HOY ({fecha_actual}) ---")
+        context.append("No hay inasistencias confirmadas hasta el momento (aún hay clases en curso o todos asistieron).")
+
+    return "\n".join(context)
+
+def ask_ai_assistant(db_path, user_question):
+    """Obtiene respuesta de la IA (Gemini) para la consulta del usuario."""
+    import urllib.request
+    import json
+    
+    if not os.path.exists(db_path):
+        return {"success": False, "error": "Base de datos no encontrada"}
+    
+    con = get_db_connection(db_path)
+    cur = con.cursor()
+    cur.execute("SELECT gemini_api_key FROM admin_config WHERE id = 1")
+    row = cur.fetchone()
+    con.close()
+    
+    api_key = row["gemini_api_key"] if row else ""
+    if not api_key:
+        return {"success": False, "error": "API Key de Gemini no configurada"}
+    
+    system_context = get_all_system_context(db_path)
+    
+    system_instruction = (
+        "Eres un asistente virtual de asistencia académica para la institución. Tu objetivo es responder preguntas "
+        "del personal administrativo utilizando únicamente la información real del sistema que te proporcionamos "
+        "en el contexto. Responde de forma amable, clara y concisa en español. "
+        "Si te preguntan por datos que no están en el contexto o que no pertenecen a la institución, responde amablemente "
+        "que no tienes esa información en el sistema.\n\n"
+        f"CONTEXTO DE LA INSTITUCIÓN:\n{system_context}"
+    )
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": user_question}
+                ]
+            }
+        ],
+        "systemInstruction": {
+            "parts": [
+                {"text": system_instruction}
+            ]
+        }
+    }
+    
+    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            if 'candidates' in res_data and len(res_data['candidates']) > 0:
+                text_response = res_data['candidates'][0]['content']['parts'][0]['text']
+                return {"success": True, "reply": text_response}
+            else:
+                return {"success": False, "error": "Respuesta vacía o error de formato de la API"}
+    except Exception as e:
+        print("Error en llamada a Gemini API:", e)
+        return {"success": False, "error": f"Error al conectar con la API de Gemini. Verifica tu conexión a internet o la API Key."}
 
 def get_downloads_folder():
     """Retorna la ruta de la carpeta de descargas del usuario de forma multiplataforma."""

@@ -112,6 +112,21 @@ def get_attendance_history():
     return backend.get_attendance_history(DB_PATH)
 
 @eel.expose
+def get_admin_config():
+    """Retorna la configuración actual del administrador (usuario y contraseña)."""
+    return backend.get_admin_config(DB_PATH)
+
+@eel.expose
+def update_admin_config(username, password, gemini_api_key=""):
+    """Actualiza la configuración del administrador en la base de datos."""
+    return backend.update_admin_config(DB_PATH, username, password, gemini_api_key)
+
+@eel.expose
+def ask_ai_assistant(user_question):
+    """Envia una pregunta al asistente IA en base al contexto actual de la base de datos."""
+    return backend.ask_ai_assistant(DB_PATH, user_question)
+
+@eel.expose
 def save_pdf_file(base64_data, filename):
     """Guarda un archivo PDF codificado en base64 en la carpeta de descargas del usuario."""
     return backend.save_pdf_file(base64_data, filename)

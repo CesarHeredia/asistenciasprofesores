@@ -172,7 +172,9 @@ const viewPartials = {
   'dashboard': 'scr/dashboard/dashboard.html',
   'database-profesores': 'scr/dashboard/profesores.html',
   'database-materias': 'scr/dashboard/materias.html',
-  'auditoria': 'scr/dashboard/auditoria.html'
+  'auditoria': 'scr/dashboard/auditoria.html',
+  'perfil': 'scr/dashboard/perfil.html',
+  'chat-ia': 'scr/dashboard/chat-ia.html'
 };
 
 // ==========================================================================
@@ -228,22 +230,32 @@ function initLandingAndLoginEvents() {
     startLandingQrScanner();
   });
 
-  // Formulario de Login Admin (admin / admin)
-  document.getElementById('admin-login-form').addEventListener('submit', (e) => {
+  // Formulario de Login Admin (credenciales dinámicas de la base de datos)
+  document.getElementById('admin-login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = document.getElementById('login-username').value.trim();
     const pass = document.getElementById('login-password').value.trim();
 
-    if (user === 'admin' && pass === 'admin') {
-      // Éxito: Entrar a la app de admin
-      document.getElementById('login-layout').classList.add('hidden');
-      document.getElementById('admin-layout').classList.remove('hidden');
+    try {
+      let config = { username: 'admin', password: 'admin' };
+      if (window.eel) {
+        config = await eel.get_admin_config()();
+      }
 
-      // Iniciar el dashboard admin
-      initFilters();
-      navigateView('dashboard');
-    } else {
-      // Error
+      if (user === config.username && pass === config.password) {
+        // Éxito: Entrar a la app de admin
+        document.getElementById('login-layout').classList.add('hidden');
+        document.getElementById('admin-layout').classList.remove('hidden');
+
+        // Iniciar el dashboard admin
+        initFilters();
+        navigateView('dashboard');
+      } else {
+        // Error
+        document.getElementById('login-error-msg').classList.remove('hidden');
+      }
+    } catch (err) {
+      console.error("Error validando credenciales:", err);
       document.getElementById('login-error-msg').classList.remove('hidden');
     }
   });
@@ -289,7 +301,7 @@ function initNavigation() {
       const targetView = btn.getAttribute('data-view');
 
       if (targetView === 'horarios' && !currentSelectedProfesor) {
-        alert("Por favor, selecciona un profesor en 'Gestionar Profesores' y haz clic en su botón ' Horario' para configurar su grilla.");
+        alert("Por favor, selecciona un profesor en 'Ver Docentes' y haz clic en su botón ' Horario' para configurar su grilla.");
         return;
       }
 
@@ -355,8 +367,210 @@ async function navigateView(viewName) {
     if (defaultSidebar) defaultSidebar.style.display = 'none';
     if (auditSidebar) auditSidebar.style.display = 'block';
     loadAuditTable();
+  } else if (viewName === 'perfil') {
+    // Ocultar ambos sidebars en la vista de perfil
+    const defaultSidebar = document.getElementById('default-sidebar-content');
+    const auditSidebar = document.getElementById('audit-sidebar-content');
+    if (defaultSidebar) defaultSidebar.style.display = 'none';
+    if (auditSidebar) auditSidebar.style.display = 'none';
+    loadAdminProfile();
+  } else if (viewName === 'chat-ia') {
+    // Ocultar ambos sidebars en la vista del asistente IA
+    const defaultSidebar = document.getElementById('default-sidebar-content');
+    const auditSidebar = document.getElementById('audit-sidebar-content');
+    if (defaultSidebar) defaultSidebar.style.display = 'none';
+    if (auditSidebar) auditSidebar.style.display = 'none';
+    initChatIA();
   }
 }
+
+async function loadAdminProfile() {
+  const form = document.getElementById('admin-profile-form');
+  const usernameInput = document.getElementById('profile-username');
+  const passwordInput = document.getElementById('profile-password');
+  const keyInput = document.getElementById('profile-gemini-key');
+  const toggleBtn = document.getElementById('btn-toggle-profile-pass');
+  const toggleKeyBtn = document.getElementById('btn-toggle-profile-key');
+  if (!usernameInput || !passwordInput) return;
+
+  try {
+    let config = { username: 'admin', password: 'admin', gemini_api_key: '' };
+    if (window.eel) {
+      config = await eel.get_admin_config()();
+    }
+    usernameInput.value = config.username;
+    passwordInput.value = config.password;
+    if (keyInput) keyInput.value = config.gemini_api_key || '';
+  } catch (err) {
+    console.error("Error cargando configuración de administrador:", err);
+  }
+
+  if (toggleBtn) {
+    toggleBtn.onclick = () => {
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        toggleBtn.textContent = '🔒';
+      } else {
+        passwordInput.type = 'password';
+        toggleBtn.textContent = '👁️';
+      }
+    };
+  }
+
+  if (toggleKeyBtn && keyInput) {
+    toggleKeyBtn.onclick = () => {
+      if (keyInput.type === 'password') {
+        keyInput.type = 'text';
+        toggleKeyBtn.textContent = '🔒';
+      } else {
+        keyInput.type = 'password';
+        toggleKeyBtn.textContent = '👁️';
+      }
+    };
+  }
+
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const newUsername = usernameInput.value.trim();
+      const newPassword = passwordInput.value.trim();
+      const newKey = keyInput ? keyInput.value.trim() : '';
+      if (!newUsername || !newPassword) {
+        alert("El usuario y la contraseña no pueden estar vacíos.");
+        return;
+      }
+
+      try {
+        let res = { success: true };
+        if (window.eel) {
+          res = await eel.update_admin_config(newUsername, newPassword, newKey)();
+        }
+        if (res && res.success) {
+          if (typeof _showQrToast === 'function') {
+            _showQrToast("Perfil de administrador actualizado exitosamente.");
+          } else {
+            alert("Perfil de administrador actualizado exitosamente.");
+          }
+        } else {
+          alert("Error al actualizar perfil: " + (res ? res.error : "Error desconocido"));
+        }
+      } catch (err) {
+        console.error("Error al guardar perfil de admin:", err);
+        alert("Error al guardar perfil de administrador.");
+      }
+    };
+  }
+}
+
+async function initChatIA() {
+  const alertEl = document.getElementById('api-key-alert');
+  if (!alertEl) return;
+
+  try {
+    let config = { username: 'admin', password: 'admin', gemini_api_key: '' };
+    if (window.eel) {
+      config = await eel.get_admin_config()();
+    }
+    if (!config.gemini_api_key) {
+      alertEl.style.display = 'flex';
+    } else {
+      alertEl.style.display = 'none';
+    }
+  } catch (err) {
+    console.error("Error al verificar API Key:", err);
+  }
+
+  const msgsEl = document.getElementById('chat-messages');
+  if (msgsEl) {
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+}
+
+async function sendChatMessage() {
+  const inputEl = document.getElementById('chat-input');
+  if (!inputEl) return;
+  const question = inputEl.value.trim();
+  if (!question) return;
+
+  inputEl.value = '';
+  await appendAndProcessChat(question);
+}
+
+async function sendQuickSuggestion(text) {
+  await appendAndProcessChat(text);
+}
+
+async function appendAndProcessChat(text) {
+  const msgsEl = document.getElementById('chat-messages');
+  const indicatorEl = document.getElementById('chat-typing-indicator');
+  if (!msgsEl) return;
+
+  const userMsg = document.createElement('div');
+  userMsg.className = 'message user';
+  userMsg.innerHTML = `
+    <div class="message-avatar">👤</div>
+    <div class="message-content">${escapeHTML(text)}</div>
+  `;
+  msgsEl.appendChild(userMsg);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  if (indicatorEl) indicatorEl.style.display = 'block';
+
+  try {
+    let reply = "Lo siento, la comunicación con el backend no está disponible.";
+    if (window.eel) {
+      const res = await eel.ask_ai_assistant(text)();
+      if (res && res.success) {
+        reply = res.reply;
+      } else {
+        reply = `❌ Error: ${res ? res.error : "Error desconocido"}`;
+      }
+    }
+    
+    const assistantMsg = document.createElement('div');
+    assistantMsg.className = 'message assistant';
+    assistantMsg.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content">${formatMarkdown(reply)}</div>
+    `;
+    msgsEl.appendChild(assistantMsg);
+  } catch (err) {
+    console.error("Error al preguntar al asistente:", err);
+    const errorMsg = document.createElement('div');
+    errorMsg.className = 'message assistant';
+    errorMsg.innerHTML = `
+      <div class="message-avatar">🤖</div>
+      <div class="message-content">❌ Error al comunicarse con el asistente IA. Por favor, asegúrate de que tienes conexión a internet y tu API Key es válida.</div>
+    `;
+    msgsEl.appendChild(errorMsg);
+  } finally {
+    if (indicatorEl) indicatorEl.style.display = 'none';
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+}
+
+function escapeHTML(str) {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag] || tag)
+  );
+}
+
+function formatMarkdown(text) {
+  let formatted = escapeHTML(text);
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  formatted = formatted.replace(/\n/g, '<br />');
+  return formatted;
+}
+
+window.sendQuickSuggestion = sendQuickSuggestion;
+window.sendChatMessage = sendChatMessage;
 
 // Bindear eventos de acción dentro de los parciales cargados dinámicamente
 function bindPartialActions() {
@@ -1351,9 +1565,10 @@ async function _qrStartCamera() {
 
     const constraints = {
       video: {
-        facingMode: 'environment', // Preferir cámara trasera en móviles
+        facingMode: 'environment',
         width: { ideal: 1280 },
-        height: { ideal: 720 }
+        height: { ideal: 720 },
+        advanced: [{ focusMode: 'continuous' }]
       }
     };
 
@@ -1374,7 +1589,7 @@ async function _qrStartCamera() {
   }
 }
 
-/** Loop principal de detección QR — corre en cada animation frame */
+/** Loop principal de detección QR — throttled a ~15fps con resolución reducida */
 function _qrScanLoop() {
   if (!qrScanning) return;
 
@@ -1385,12 +1600,16 @@ function _qrScanLoop() {
     return;
   }
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // Escanear a 640x480 para mantener el detalle necesario para QRs pequeños o densos
+  const SCAN_W = 640;
+  const SCAN_H = 480;
+  canvas.width = SCAN_W;
+  canvas.height = SCAN_H;
+  // willReadFrequently evita que el navegador mueva el canvas a la GPU
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, SCAN_W, SCAN_H);
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, SCAN_W, SCAN_H);
 
   // Decodificar con jsQR
   if (typeof jsQR !== 'undefined') {
@@ -1406,6 +1625,7 @@ function _qrScanLoop() {
     }
   }
 
+  // Frecuencia nativa (~60fps) para máxima velocidad de lectura
   qrAnimFrame = requestAnimationFrame(_qrScanLoop);
 }
 
@@ -1566,8 +1786,9 @@ async function startLandingQrScanner() {
     const constraints = {
       video: {
         facingMode: 'environment',
-        width: { ideal: 640 },
-        height: { ideal: 480 }
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        advanced: [{ focusMode: 'continuous' }]
       }
     };
 
@@ -1617,12 +1838,16 @@ function landingQrScanLoop() {
     return;
   }
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // Escanear a 640x480 para asegurar que QRs densos o pequeños se puedan leer bien
+  const SCAN_W = 640;
+  const SCAN_H = 480;
+  canvas.width = SCAN_W;
+  canvas.height = SCAN_H;
+  // willReadFrequently optimiza las lecturas repetidas de píxeles
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, SCAN_W, SCAN_H);
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const imageData = ctx.getImageData(0, 0, SCAN_W, SCAN_H);
 
   if (typeof jsQR !== 'undefined') {
     const code = jsQR(imageData.data, imageData.width, imageData.height, {
@@ -1636,6 +1861,7 @@ function landingQrScanLoop() {
     }
   }
 
+  // Frecuencia nativa (~60fps)
   landingQrAnimFrame = requestAnimationFrame(landingQrScanLoop);
 }
 
@@ -1785,6 +2011,16 @@ async function loadRecentFeed() {
   }
 }
 
+function parseLocalDate(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getSpanishWeekday(date) {
+  const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  return dayNames[date.getDay()];
+}
+
 async function loadAuditTable() {
   const tbody = document.querySelector('#audit-table tbody');
   if (!tbody) return;
@@ -1803,7 +2039,19 @@ async function loadAuditTable() {
     }
 
     auditFullHistory = history || [];  // Guardar copia completa para filtros
-    renderAuditRows(auditFullHistory);
+
+    // Inicializar el filtro de fecha con el día actual si no hay ningún filtro de fecha o mes activo
+    const dateInput = document.getElementById('audit-filter-date');
+    const monthInput = document.getElementById('audit-filter-month');
+    if (dateInput && !dateInput.value && monthInput && !monthInput.value) {
+      const now = new Date();
+      const offset = now.getTimezoneOffset();
+      const localDate = new Date(now.getTime() - (offset * 60 * 1000));
+      const todayStr = localDate.toISOString().split('T')[0];
+      dateInput.value = todayStr;
+    }
+
+    applyAuditDateFilter();
   } catch (err) {
     console.error("Error cargando tabla de auditoria:", err);
     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #ef4444;">Error al conectar con la base de datos.</td></tr>';
@@ -1854,32 +2102,134 @@ function renderAuditRows(history) {
 
 function applyAuditDateFilter() {
   const dateInput = document.getElementById('audit-filter-date');
+  const monthInput = document.getElementById('audit-filter-month');
   const profesorInput = document.getElementById('audit-filter-profesor');
+
   const selectedDate = dateInput ? dateInput.value : '';
+  const selectedMonth = monthInput ? monthInput.value : '';
   const searchProfesor = profesorInput ? profesorInput.value.trim().toLowerCase() : '';
 
-  let filtered = [...auditFullHistory];
+  let filtered = [];
 
+  // Determinar el rango de fechas para el cual calcularemos inasistencias
+  let targetDates = [];
   if (selectedDate) {
-    filtered = filtered.filter(log => log.fecha_asistencia === selectedDate);
+    targetDates = [selectedDate];
+  } else if (selectedMonth) {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    let currentDate = new Date(year, month - 1, 1);
+    const lastDayOfMonth = new Date(year, month, 0);
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    
+    let endDate = lastDayOfMonth;
+    if (lastDayOfMonth > todayMidnight) {
+      endDate = todayMidnight; // No calcular inasistencias futuras
+    }
+    
+    while (currentDate <= endDate) {
+      const y = currentDate.getFullYear();
+      const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const d = String(currentDate.getDate()).padStart(2, '0');
+      targetDates.push(`${y}-${m}-${d}`);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
   }
 
+  // 1. Obtener registros reales de asistencia que coincidan con la fecha o el mes
+  let actualRecords = [...auditFullHistory];
+  
+  if (selectedDate) {
+    actualRecords = actualRecords.filter(log => log.fecha_asistencia === selectedDate);
+  } else if (selectedMonth) {
+    actualRecords = actualRecords.filter(log => log.fecha_asistencia.startsWith(selectedMonth));
+  }
+
+  // Filtrar por nombre del profesor
   if (searchProfesor) {
-    filtered = filtered.filter(log => {
+    actualRecords = actualRecords.filter(log => {
       const fullName = `${log.nb_profesor} ${log.ap_profesor}`.toLowerCase();
       return fullName.includes(searchProfesor);
     });
   }
+
+  // 2. Generar registros sintéticos de "Inasistente/Ausente" para los profesores programados que no asistieron
+  let generatedAbsences = [];
+  const todayStr2 = new Date().toISOString().split('T')[0];
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+
+  if (targetDates.length > 0 && rawDashboardData && rawDashboardData.length > 0) {
+    targetDates.forEach(dateStr => {
+      const localDate = parseLocalDate(dateStr);
+      const weekdayName = getSpanishWeekday(localDate);
+      const isToday = dateStr === todayStr2;
+
+      rawDashboardData.forEach(prof => {
+        // Obtener slots del profesor para este día de la semana
+        const slotsOnThisDay = (prof.schedule_slots || []).filter(slot => slot.dia === weekdayName);
+        if (slotsOnThisDay.length === 0) return;
+
+        // Para HOY: solo marcar como ausente si ya terminó la ÚLTIMA clase del día
+        if (isToday) {
+          const lastEndMin = Math.max(...slotsOnThisDay.map(s => timeToMinutes(s.hora_fin)));
+          if (nowMinutes < lastEndMin) return; // Aún hay clases en curso o por comenzar → no ausente todavía
+        }
+
+        // ¿Registró asistencia este día?
+        const checkedIn = auditFullHistory.some(log => log.id_profesor === prof.id_profesor && log.fecha_asistencia === dateStr);
+        if (!checkedIn) {
+          const fullName = prof.nombre.toLowerCase();
+          if (!searchProfesor || fullName.includes(searchProfesor)) {
+            const parts = prof.nombre.split(' ');
+            const nb_profesor = parts[0] || '';
+            const ap_profesor = parts.slice(1).join(' ') || '';
+
+            generatedAbsences.push({
+              id_asistencia: null,
+              fecha_asistencia: dateStr,
+              hora_entrada: "",
+              hora_salida: "",
+              id_profesor: prof.id_profesor,
+              nb_profesor: nb_profesor,
+              ap_profesor: ap_profesor,
+              estado: "Ausente"
+            });
+          }
+        }
+      });
+    });
+  }
+
+  filtered = [...actualRecords, ...generatedAbsences];
+
+  // Ordenar por fecha desc, luego registros reales primero (tienen hora entrada), y luego inasistentes
+  filtered.sort((a, b) => {
+    if (a.fecha_asistencia !== b.fecha_asistencia) {
+      return b.fecha_asistencia.localeCompare(a.fecha_asistencia);
+    }
+    const timeA = a.hora_entrada || '';
+    const timeB = b.hora_entrada || '';
+    if (timeA && timeB) {
+      return timeB.localeCompare(timeA);
+    }
+    return timeA ? -1 : (timeB ? 1 : 0);
+  });
+
+  // Guardar en variable global para exportación
+  window.auditFilteredHistory = filtered;
 
   renderAuditRows(filtered);
 }
 
 function clearAuditDateFilter() {
   const dateInput = document.getElementById('audit-filter-date');
+  const monthInput = document.getElementById('audit-filter-month');
   const profesorInput = document.getElementById('audit-filter-profesor');
   if (dateInput) dateInput.value = '';
+  if (monthInput) monthInput.value = '';
   if (profesorInput) profesorInput.value = '';
-  renderAuditRows(auditFullHistory);
+  
+  applyAuditDateFilter();
 }
 
 async function exportAuditToPDF() {
@@ -1890,28 +2240,7 @@ async function exportAuditToPDF() {
       return;
     }
 
-    let history = [];
-    if (window.eel) {
-      history = await eel.get_attendance_history()();
-    } else {
-      history = [];
-    }
-
-    // Aplicar filtros activos si los hay
-    const dateInput = document.getElementById('audit-filter-date');
-    const profesorInput = document.getElementById('audit-filter-profesor');
-    const selectedDate = dateInput ? dateInput.value : '';
-    const searchProfesor = profesorInput ? profesorInput.value.toLowerCase().trim() : '';
-
-    if (selectedDate) {
-      history = history.filter(log => log.fecha_asistencia === selectedDate);
-    }
-    if (searchProfesor) {
-      history = history.filter(log => {
-        const fullName = `${log.nb_profesor} ${log.ap_profesor}`.toLowerCase();
-        return fullName.includes(searchProfesor);
-      });
-    }
+    const history = window.auditFilteredHistory || [];
 
     if (!history || history.length === 0) {
       alert("No hay registros de asistencia para exportar con los filtros actuales.");
@@ -1929,10 +2258,20 @@ async function exportAuditToPDF() {
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     const nowStr = new Date().toLocaleString();
+    
+    // Obtener información de filtros activos
+    const dateInput = document.getElementById('audit-filter-date');
+    const monthInput = document.getElementById('audit-filter-month');
+    const profesorInput = document.getElementById('audit-filter-profesor');
+    const selectedDate = dateInput ? dateInput.value : '';
+    const selectedMonth = monthInput ? monthInput.value : '';
+    const searchProfesor = profesorInput ? profesorInput.value.trim() : '';
+
     let filterText = '';
-    if (selectedDate || searchProfesor) {
+    if (selectedDate || selectedMonth || searchProfesor) {
       const parts = [];
       if (selectedDate) parts.push(`Fecha: ${selectedDate}`);
+      if (selectedMonth) parts.push(`Mes: ${selectedMonth}`);
       if (searchProfesor) parts.push(`Profesor: "${searchProfesor}"`);
       filterText = ` | Filtros: ${parts.join(', ')}`;
     }
@@ -1989,7 +2328,7 @@ async function exportAuditToPDF() {
         if (typeof _showQrToast === 'function') {
           _showQrToast("Reporte PDF guardado exitosamente en Descargas.", "success");
         }
-        alert(`PDF Guardado Exitosamente!\\n\\nSe ha guardado en tu carpeta de Descargas:\\n${res.path}`);
+        alert(`PDF Guardado Exitosamente!\n\nSe ha guardado en tu carpeta de Descargas:\n${res.path}`);
       } else {
         alert("Error al guardar el PDF en el sistema: " + (res ? res.error : "Error desconocido"));
       }
